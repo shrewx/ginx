@@ -93,7 +93,7 @@ func Start(s *Server, r *GinRouter) {
 }
 
 func (s *Server) run() {
-	if s.Https && (len(s.CertFile) <= 0 || len(s.KeyFile) <= 0) {
+	if s.Https && (s.CertFile == "" || s.KeyFile == "") {
 		panic("use https but cert file or key file not set")
 	}
 

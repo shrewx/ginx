@@ -1,16 +1,16 @@
 package ginx
 
 const (
-	TypeMiddleware = "middleware"
-	APIKey         = "apiKey"
-	BasicAuth      = "basicAuth"
-	BearerJWT      = "bearerJWT"
+	Middleware = "middleware"
+	APIKey     = "apiKey"
+	BasicAuth  = "basicAuth"
+	BearerJWT  = "bearerJWT"
 )
 
 type MiddlewareType struct{}
 
 func (e *MiddlewareType) Type() string {
-	return TypeMiddleware
+	return Middleware
 }
 
 type APIKeySecurityType struct{}
