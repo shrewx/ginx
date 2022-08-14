@@ -95,8 +95,8 @@ func initGinEngine(r *GinRouter, agent *ptrace.Agent) *gin.Engine {
 
 	// internal middleware
 	root.Use(gin.Recovery())
-	root.Use(middleware.Telemetry(agent))
 	root.Use(middleware.CORS())
+	root.Use(middleware.Telemetry(agent))
 
 	loadGinRouters(root, r)
 
