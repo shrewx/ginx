@@ -51,7 +51,7 @@ func (g *GetHelloWorld) Output(ctx *gin.Context) (interface{}, error) {
 }
 ```
 如果返回的error没有实现`CommonError`这个接口，错误就会封装成`status_error.CommonError`
-```json
+```go
 status_error.CommonError{
     Key:     "InternalServerError",
     Code:    http.StatusBadGateway,
