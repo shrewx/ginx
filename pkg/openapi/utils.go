@@ -25,15 +25,15 @@ const (
 )
 
 var (
-	pkgImportServicex = packagesx.ImportGoPath(reflect.TypeOf(ginx.GinRouter{}).PkgPath())
+	pkgImportGinx = packagesx.ImportGoPath(reflect.TypeOf(ginx.GinRouter{}).PkgPath())
 )
 
 func isGinRouterType(typ types.Type) bool {
-	return strings.HasSuffix(typ.String(), pkgImportServicex+".GinRouter")
+	return strings.HasSuffix(typ.String(), pkgImportGinx+".GinRouter")
 }
 
-func containsServicex(typ types.Type) bool {
-	return strings.Contains(typ.String(), pkgImportServicex)
+func containsGinx(typ types.Type) bool {
+	return strings.Contains(typ.String(), pkgImportGinx)
 }
 
 func tagValueAndFlagsByTagString(tagString string) (string, map[string]bool) {

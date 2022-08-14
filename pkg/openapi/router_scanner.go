@@ -36,7 +36,7 @@ func (scanner *RouterScanner) init() {
 	for _, pkg := range scanner.pkg.AllPackages {
 		for ident, obj := range pkg.TypesInfo.Defs {
 			if typeVar, ok := obj.(*types.Var); ok {
-				if typeVar != nil && !strings.HasSuffix(typeVar.Pkg().Path(), pkgImportServicex) &&
+				if typeVar != nil && !strings.HasSuffix(typeVar.Pkg().Path(), pkgImportGinx) &&
 					isGinRouterType(typeVar.Type()) {
 					router := NewRouter(typeVar)
 					ast.Inspect(ident.Obj.Decl.(ast.Node), func(node ast.Node) bool {
@@ -159,7 +159,7 @@ func (scanner *RouterScanner) OperatorTypeNamesFromArgs(pkg *packagesx.Package, 
 		// parse servicex.Group("")
 		if callExpr, ok := arg.(*ast.CallExpr); ok {
 			if selectorExpr, ok := callExpr.Fun.(*ast.SelectorExpr); ok {
-				if containsServicex(pkg.TypesInfo.ObjectOf(selectorExpr.Sel).Type()) {
+				if containsGinx(pkg.TypesInfo.ObjectOf(selectorExpr.Sel).Type()) {
 					switch selectorExpr.Sel.Name {
 					case "Group":
 						switch v := callExpr.Args[0].(type) {
