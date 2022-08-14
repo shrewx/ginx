@@ -86,8 +86,8 @@ func rootRouter(pkgInfo *packagesx.Package, callExpr *ast.CallExpr) *types.Var {
 		if selectorExpr, ok := callExpr.Fun.(*ast.SelectorExpr); ok {
 			if typesFunc, ok := pkgInfo.TypesInfo.ObjectOf(selectorExpr.Sel).(*types.Func); ok {
 				if signature, ok := typesFunc.Type().(*types.Signature); ok {
-					if isGinRouterType(signature.Params().At(0).Type()) {
-						if selectorExpr.Sel.Name == "Start" {
+					if signature.Params().Len() == 2 && isGinRouterType(signature.Params().At(1).Type()) {
+						if selectorExpr.Sel.Name == "RunServer" {
 							if len(callExpr.Args) == 2 {
 								switch node := callExpr.Args[1].(type) {
 								case *ast.SelectorExpr:

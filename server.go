@@ -70,7 +70,7 @@ func (s *Server) init() {
 	}
 }
 
-func Start(s *Server, r *GinRouter) {
+func RunServer(s *Server, r *GinRouter) {
 	s.init()
 
 	// release mode
