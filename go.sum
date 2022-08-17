@@ -166,6 +166,12 @@ github.com/rogpeppe/go-internal v1.8.0 h1:FCbCCtXNOY3UtUuHUYaghJg4y7Fd14rXifAYUA
 github.com/rogpeppe/go-internal v1.8.0/go.mod h1:WmiCO8CzOY8rg0OYDC4/i/2WRWAB6poM+XZ2dLUbcbE=
 github.com/russross/blackfriday/v2 v2.0.1/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
+github.com/shrewx/enum v0.0.0-20220816102323-914e2abc5875 h1:swNvCGlOuMaO5djgRzI6Xax5JhNzUWP/je9fEO95meQ=
+github.com/shrewx/enum v0.0.0-20220816102323-914e2abc5875/go.mod h1:TivJ3Vsz6ccmRXaogm5wwze03eqBlWgcfVbrxQKmXKQ=
+github.com/shrewx/enum v0.0.0-20220817101142-9461419e1f8c h1:NCZlWxEsGvyBM9g5artrjikHehL/qKsk6ancX7g3qSk=
+github.com/shrewx/enum v0.0.0-20220817101142-9461419e1f8c/go.mod h1:TivJ3Vsz6ccmRXaogm5wwze03eqBlWgcfVbrxQKmXKQ=
+github.com/shrewx/enum v0.0.0-20220817101904-3ffdba5b63db h1:Fnf7CouyjVbFYYe3XQq49l3BFjhWD+nU3YClyXjG0vg=
+github.com/shrewx/enum v0.0.0-20220817101904-3ffdba5b63db/go.mod h1:TivJ3Vsz6ccmRXaogm5wwze03eqBlWgcfVbrxQKmXKQ=
 github.com/shrewx/statuserror v0.0.0-20220813053810-856d0205fd39 h1:jzZRlCGf7FqvPVfx/HrZqQ7FiYpo34VIqHS5vMErVSw=
 github.com/shrewx/statuserror v0.0.0-20220813053810-856d0205fd39/go.mod h1:v5RPF+teszLoSJk7Xu3s0Ddz4mG/zM85N4AJZbrHbZ4=
 github.com/shrewx/stringx v0.0.0-20220813052717-dd57986fd4d1/go.mod h1:yj9ILUgf8NEjgwsBOhK7n6AeO41/k8SWX6N0lMttWP8=

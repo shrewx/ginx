@@ -7,12 +7,14 @@ import (
 	"github.com/go-courier/packagesx"
 	"github.com/go-courier/reflectx/typesutil"
 	"github.com/pkg/errors"
+	"github.com/shrewx/enum"
 	"github.com/sirupsen/logrus"
 	"go/ast"
 	"go/types"
 	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -20,11 +22,13 @@ func NewDefinitionScanner(pkg *packagesx.Package) *DefinitionScanner {
 	return &DefinitionScanner{
 		pkg:               pkg,
 		ioWriterInterface: packagesx.NewPackage(pkg.Pkg("io")).TypeName("Writer").Type().Underlying().(*types.Interface),
+		enums:             make(map[*packagesx.Package]*enum.EnumScanner, 0),
 	}
 }
 
 type DefinitionScanner struct {
 	pkg               *packagesx.Package
+	enums             map[*packagesx.Package]*enum.EnumScanner
 	definitions       map[*types.TypeName]*oas.Schema
 	schemas           map[string]*oas.Schema
 	ioWriterInterface *types.Interface
@@ -149,6 +153,33 @@ func (scanner *DefinitionScanner) Def(ctx context.Context, typeName *types.TypeN
 	}
 
 	setMetaFromDoc(s, doc)
+
+	// enum
+	typePkg := packagesx.NewPackage(scanner.pkg.Pkg(typeName.Pkg().Path()))
+	if _, ok := scanner.enums[typePkg]; !ok {
+		scanner.enums[typePkg] = enum.NewEnumScanner(typePkg)
+	}
+	enumValues := scanner.enums[typePkg].Enum(typeName)
+	if len(enumValues) != 0 {
+		var keyLabel = make(map[string]string, 0)
+		for _, ev := range enumValues {
+			if ev.StringValue != nil {
+				s.Enum = append(s.Enum, ev.StringValue)
+				keyLabel[*ev.StringValue] = ev.Label
+				s.Type = oas.TypeString
+			} else if ev.IntValue != nil {
+				s.Enum = append(s.Enum, ev.IntValue)
+				keyLabel[strconv.FormatInt(*ev.IntValue, 10)] = ev.Label
+				s.Type = oas.TypeInteger
+			} else if ev.FloatValue != nil {
+				s.Enum = append(s.Enum, ev.FloatValue)
+				keyLabel[strconv.FormatFloat(*ev.FloatValue, 'g', -1, 64)] = ev.Label
+				s.Type = oas.TypeNumber
+			}
+
+		}
+		s.AddExtension(XEnumLabels, keyLabel)
+	}
 
 	return scanner.setDef(typeName, s)
 }
@@ -319,8 +350,10 @@ func (scanner *DefinitionScanner) GetSchemaByType(ctx context.Context, typ types
 
 			required := false
 			validate := tags.Get("validate")
-			_, validateFlags := tagValueAndFlagsByTagString(validate)
-			if _, ok := validateFlags["required"]; ok {
+			value, validateFlags := tagValueAndFlagsByTagString(validate)
+			if value == "required" {
+				required = true
+			} else if _, ok := validateFlags["required"]; ok {
 				required = true
 			}
 
@@ -389,7 +422,7 @@ type VendorExtensible interface {
 }
 
 func markPointer(vendorExtensible VendorExtensible, count int) {
-	// vendorExtensible.AddExtension(XGoStarLevel, count)
+	vendorExtensible.AddExtension(XGoStarLevel, count)
 }
 
 var (
