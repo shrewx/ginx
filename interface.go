@@ -29,8 +29,12 @@ type TypeDescriber interface {
 	Type() string
 }
 
-type MineDescriber interface {
+type ContentTypeDescriber interface {
 	ContentType() string
+}
+
+type MineDescriber interface {
+	ContentTypeDescriber
 	Bytes() []byte
 }
 
