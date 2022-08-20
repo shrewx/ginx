@@ -45,7 +45,7 @@ func (g *GetHelloWorld) Output(ctx *gin.Context) (interface{}, error) {
 
 第一个定义为`interface`，即返回任何类型的对象都可以， 框架会判断其类型来设置不同的ContextType(默认使用`application/json`)
 
-第二个是`error`,为了规范错误码的定义，使用[错误码工具](https://github.com/shrewx/ginx/toolX)进行生成，错误码返回结构定义为：
+第二个是`error`,为了规范错误码的定义，使用[statuserror](https://github.com/shrewx/statuserror)库和[自动化工具](https://github.com/shrewx/toolx)进行生成，错误码返回结构定义为：
 ```json
 {
   "key": "DDIResourceNotFound", 
