@@ -33,7 +33,7 @@ func Telemetry(agent *ptrace.Agent) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
-		filterUri := []string{"/ping"}
+		filterUri := []string{"/health"}
 		for i := range filterUri {
 			if filterUri[i] == path {
 				c.Next()

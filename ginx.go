@@ -6,6 +6,8 @@ import (
 	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/ilyakaznacheev/cleanenv"
+	"github.com/shrewx/ginx/pkg/conf/server"
+	"github.com/shrewx/ginx/pkg/service_discovery"
 	"github.com/shrewx/ginx/pkg/trace"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -16,21 +18,24 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
+	"time"
 )
 
 var (
-	server *Server
-	once   sync.Once
-	conf   = &Ginx{
+	confFile string
+
+	ginx = &Ginx{
 		Command: &cobra.Command{},
 		i18n:    I18nZH,
+		once:    sync.Once{},
 	}
-	confFile string
 )
 
 type Ginx struct {
 	*cobra.Command
-	i18n string
+	i18n   string
+	server *Server
+	once   sync.Once
 }
 
 // Parse function is parse the config file
@@ -51,7 +56,7 @@ func Parse(conf interface{}) {
 
 // AddCommand function is add command to cli
 func AddCommand(cmds ...*cobra.Command) {
-	conf.Command.AddCommand(cmds...)
+	ginx.Command.AddCommand(cmds...)
 }
 
 // Launch function is program entry， you can start a server like this:
@@ -62,9 +67,9 @@ func AddCommand(cmds ...*cobra.Command) {
 //		ginx.RunServer(ServerConfig, router.V0Router)
 //	})
 func Launch(run func(cmd *cobra.Command, args []string)) {
-	conf.Command.Run = run
-	conf.Command.Flags().StringVarP(&confFile, "config", "f", "config.yml", "define server conf file path")
-	if err := conf.Execute(); err != nil {
+	ginx.Command.Run = run
+	ginx.Command.Flags().StringVarP(&confFile, "config", "f", "config.yml", "define server conf file path")
+	if err := ginx.Execute(); err != nil {
 		panic(err)
 	}
 }
@@ -73,15 +78,15 @@ func Launch(run func(cmd *cobra.Command, args []string)) {
 func SetI18n(language string) {
 	switch language {
 	case I18nEN:
-		conf.i18n = I18nEN
+		ginx.i18n = I18nEN
 	default:
-		conf.i18n = I18nZH
+		ginx.i18n = I18nZH
 	}
 }
 
-func RunServer(config *ServerConfig, r *GinRouter) {
+func RunServer(config *server.Config, r *GinRouter) {
 	if config == nil {
-		config = NewOptions()
+		config = server.NewOptions()
 	}
 
 	// release mode
@@ -103,30 +108,40 @@ func RunServer(config *ServerConfig, r *GinRouter) {
 }
 
 type Server struct {
-	engine          *gin.Engine
+	engine  *gin.Engine
+	server  *http.Server
+	watcher service_discovery.ServiceDiscovery
+
 	signalWaiter    func(err chan error) error
 	graceCloseHooks []Callback
 }
 
-type Callback func(ctx context.Context)
+type Callback func()
 
-func AddFinishHook(callback ...Callback) {
-	instance().graceCloseHooks = append(server.graceCloseHooks, callback...)
+func AddShutdownHook(callback ...Callback) {
+	instance().graceCloseHooks = append(ginx.server.graceCloseHooks, callback...)
+}
+
+func Register(watcher service_discovery.ServiceDiscovery) {
+	instance().watcher = watcher
 }
 
 func instance() *Server {
-	once.Do(func() {
-		server = new(Server)
+	ginx.once.Do(func() {
+		ginx.server = new(Server)
 	})
 
-	return server
+	return ginx.server
 }
 
-func (s *Server) spin(conf *ServerConfig) {
+func (s *Server) spin(conf *server.Config) {
 	errCh := make(chan error)
 	go func() {
 		errCh <- s.run(conf)
 	}()
+
+	// discovery
+	s.watch(conf)
 
 	signalWaiter := waitSignal
 	if s.signalWaiter != nil {
@@ -135,30 +150,35 @@ func (s *Server) spin(conf *ServerConfig) {
 
 	if err := signalWaiter(errCh); err != nil {
 		logrus.Errorf("receive close signal: error=%s", err.Error())
-		ctx, cancel := context.WithTimeout(context.Background(), conf.ExitWaitTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(conf.ExitWaitTimeout)*time.Second)
 		defer cancel()
-		s.graceClose(ctx)
+		s.server.Shutdown(ctx)
 		return
 	}
 }
 
-func (s *Server) run(conf *ServerConfig) (err error) {
+func (s *Server) run(conf *server.Config) (err error) {
 	if conf.Https && (conf.CertFile == "" || conf.KeyFile == "") {
 		panic("use https but cert file or key file not set")
 	}
 	addr := conf.Host + ":" + strconv.Itoa(conf.Port)
-	server := &http.Server{Addr: addr, Handler: s.engine}
+	s.server = &http.Server{Addr: addr, Handler: s.engine}
+
+	// hook
+	for _, hook := range s.graceCloseHooks {
+		s.server.RegisterOnShutdown(hook)
+	}
 
 	if conf.Https {
-		server.TLSConfig = &tls.Config{
-			InsecureSkipVerify: true,
+		s.server.TLSConfig = &tls.Config{
+			InsecureSkipVerify: conf.InsecureSkipVerify,
 			MaxVersion:         conf.MaxVersion,
 			MinVersion:         conf.MinVersion,
 			CipherSuites:       conf.CipherSuites,
 		}
-		err = server.ListenAndServeTLS(conf.CertFile, conf.KeyFile)
+		err = s.server.ListenAndServeTLS(conf.CertFile, conf.KeyFile)
 	} else {
-		err = server.ListenAndServe()
+		err = s.server.ListenAndServe()
 	}
 
 	if err != nil {
@@ -168,10 +188,26 @@ func (s *Server) run(conf *ServerConfig) (err error) {
 	return err
 }
 
-func (s *Server) graceClose(ctx context.Context) {
-	for _, hook := range s.graceCloseHooks {
-		hook(ctx)
+func (s *Server) watch(conf *server.Config) error {
+	if s.watcher != nil {
+		info := service_discovery.ServiceInfo{
+			Name:           conf.Name,
+			Address:        conf.Address,
+			Port:           conf.Port,
+			Tags:           conf.Tags,
+			ID:             conf.ID,
+			HealthPath:     conf.HeathPath,
+			Timeout:        conf.Timeout,
+			Interval:       conf.Interval,
+			DeregisterTime: conf.DeregisterTime,
+		}
+		info.Default()
+		if err := s.watcher.Watch(info); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
 func waitSignal(errCh chan error) error {

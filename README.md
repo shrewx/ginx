@@ -9,6 +9,8 @@
 
 ## 快速上手
 
+[example](https://github.com/shrewx/toolx/tree/master/__example__) 
+
 ## 说明
 
 ### 路由
@@ -259,7 +261,7 @@ func (g *Image) Output(ctx *gin.Context) (interface{}, error) {
 }
 ```
 #### 其他
-如果框架中列出的Mine都不满足，可直接使用gin的ctx.Data方法设置
+如果框架中列出的Mine都不满足，可以自行实现MineDescriber接口或者直接使用gin的ctx.Data方法设置
 ```go
 func (g *OtherType) Output(ctx *gin.Context) (interface{}, error) {
 	ctx.Data(http.StatusOK, "other_type", []byte("hello world"))
@@ -321,7 +323,10 @@ toolx gen openapi -p "后台服务代码路径，默认为当前路径"
 ```
 
 ### Client生成
-
+为了方便其他服务调用，可自动生成client相关代码，命令为：
+```shell
+toolx gen client -s "客户端名称" -u "openapi.jso（支持url和本地路径）"
+```
 
 
 ### 提高开发效率

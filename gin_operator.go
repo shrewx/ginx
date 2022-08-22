@@ -93,6 +93,11 @@ func (g *GinRouter) Register(r Operator) {
 func initGinEngine(r *GinRouter, agent *ptrace.Agent) *gin.Engine {
 	root := gin.New()
 
+	// health
+	root.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, "health")
+	})
+
 	// internal middleware
 	root.Use(gin.Recovery())
 	root.Use(middleware.CORS())
@@ -142,12 +147,12 @@ func loadGinRouters(ir gin.IRouter, r *GinRouter) {
 func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		op = reflect.New(reflect.ValueOf(op).Elem().Type()).Interface().(Operator)
+		ctx.Set(OperationName, reflect.TypeOf(op).Elem().Name())
+
 		if err := binding.Validate(ctx, op); err != nil {
 			ginErrorWrapper(errors.BadRequest, ctx)
 			return
 		}
-
-		ctx.Set(OperationName, reflect.TypeOf(op).Elem().Name())
 
 		result, err := op.Output(ctx)
 		if err != nil {
@@ -183,12 +188,11 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		op = reflect.New(reflect.ValueOf(op).Elem().Type()).Interface().(Operator)
+		ctx.Set(OperationName, reflect.TypeOf(op).Elem().Name())
 		if err := binding.Validate(ctx, op); err != nil {
 			ginErrorWrapper(err, ctx)
 			return
 		}
-
-		ctx.Set(OperationName, reflect.TypeOf(op).Elem().Name())
 
 		result, err := op.Output(ctx)
 		if err != nil {
@@ -207,9 +211,9 @@ func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
 func ginErrorWrapper(err error, ctx *gin.Context) {
 	switch e := err.(type) {
 	case *statuserror.StatusErr:
-		ctx.AbortWithStatusJSON(e.StatusCode(), e.I18n(I18n))
+		ctx.AbortWithStatusJSON(e.StatusCode(), e.I18n(ginx.i18n))
 	case statuserror.CommonError:
-		ctx.AbortWithStatusJSON(statuserror.StatusCodeFromCode(e.Code()), e.I18n(I18n))
+		ctx.AbortWithStatusJSON(statuserror.StatusCodeFromCode(e.Code()), e.I18n(ginx.i18n))
 	default:
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &statuserror.StatusErr{
 			Key:       errors.InternalServerError.Key(),
