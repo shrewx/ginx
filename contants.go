@@ -14,6 +14,7 @@ const (
 const (
 	I18nZH = "zh"
 	I18nEN = "en"
+	Lang   = "lang"
 )
 
 const (

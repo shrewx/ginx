@@ -75,6 +75,7 @@ func Launch(run func(cmd *cobra.Command, args []string)) {
 }
 
 // SetI18n function is set the language of message
+// Default I18n is ZH, this will set to cookie
 func SetI18n(language string) {
 	switch language {
 	case I18nEN:
