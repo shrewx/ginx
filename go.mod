@@ -17,7 +17,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/shrewx/enum v0.0.0-20220817101904-3ffdba5b63db
-	github.com/shrewx/statuserror v0.0.0-20220813053810-856d0205fd39
+	github.com/shrewx/statuserror v0.0.0-20221130064632-e1fd799f4b61
 	github.com/shrewx/stringx v0.0.0-20220813065501-1b4a4077d113
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/cast v1.5.0
