@@ -149,10 +149,6 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 		op = reflect.New(reflect.ValueOf(op).Elem().Type()).Interface().(Operator)
 		ctx.Set(OperationName, reflect.TypeOf(op).Elem().Name())
 
-		if lang, _ := ctx.Cookie(Lang); lang == "" {
-			ctx.SetCookie(Lang, ginx.i18n, 0, "", "", true, false)
-		}
-
 		if err := binding.Validate(ctx, op); err != nil {
 			ginErrorWrapper(errors.BadRequest, ctx)
 			return
@@ -213,12 +209,11 @@ func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
 }
 
 func ginErrorWrapper(err error, ctx *gin.Context) {
-	lang, _ := ctx.Cookie(Lang)
 	switch e := err.(type) {
 	case *statuserror.StatusErr:
-		ctx.AbortWithStatusJSON(e.StatusCode(), e.I18n(lang))
+		ctx.AbortWithStatusJSON(e.StatusCode(), e.I18n(ginI18n(ctx)))
 	case statuserror.CommonError:
-		ctx.AbortWithStatusJSON(statuserror.StatusCodeFromCode(e.Code()), e.I18n(lang))
+		ctx.AbortWithStatusJSON(statuserror.StatusCodeFromCode(e.Code()), e.I18n(ginI18n(ctx)))
 	default:
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &statuserror.StatusErr{
 			Key:       errors.InternalServerError.Key(),
@@ -226,4 +221,18 @@ func ginErrorWrapper(err error, ctx *gin.Context) {
 			Message:   e.Error(),
 		})
 	}
+}
+
+func ginI18n(ctx *gin.Context) string {
+	lang := ginx.i18n
+	if ctx.GetHeader(LangHeader) != "" {
+		switch ctx.GetHeader(LangHeader) {
+		case I18nEN:
+			lang = I18nEN
+		case I18nZH:
+			lang = I18nZH
+		default:
+		}
+	}
+	return lang
 }
