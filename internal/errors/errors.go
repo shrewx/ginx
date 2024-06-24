@@ -32,5 +32,5 @@ const (
 
 const (
 	// @errZH 内部处理错误
-	InternalServerError StatusError = http.StatusInternalServerError*1e6 + iota + 1
+	InternalServerError StatusError = http.StatusInternalServerError*1e8 + iota + 1
 )
