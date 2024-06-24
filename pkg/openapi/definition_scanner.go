@@ -1,7 +1,9 @@
 package openapi
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"github.com/go-courier/codegen"
 	"github.com/go-courier/oas"
 	"github.com/go-courier/packagesx"
@@ -19,11 +21,16 @@ import (
 )
 
 func NewDefinitionScanner(pkg *packagesx.Package) *DefinitionScanner {
-	return &DefinitionScanner{
-		pkg:               pkg,
-		ioWriterInterface: packagesx.NewPackage(pkg.Pkg("io")).TypeName("Writer").Type().Underlying().(*types.Interface),
-		enums:             make(map[*packagesx.Package]*enum.EnumScanner, 0),
+	definitionScanner := &DefinitionScanner{
+		pkg:   pkg,
+		enums: make(map[*packagesx.Package]*enum.EnumScanner, 0),
 	}
+	writer := packagesx.NewPackage(pkg.Pkg("io")).TypeName("Writer")
+	if writer != nil {
+		definitionScanner.ioWriterInterface = writer.Type().Underlying().(*types.Interface)
+	}
+
+	return definitionScanner
 }
 
 type DefinitionScanner struct {
@@ -108,7 +115,7 @@ func (scanner *DefinitionScanner) Def(ctx context.Context, typeName *types.TypeN
 		return scanner.setDef(typeName, s)
 	}
 
-	if typesutil.FromTType(types.NewPointer(typeName.Type())).Implements(typesutil.FromTType(scanner.ioWriterInterface)) {
+	if scanner.ioWriterInterface != nil && typesutil.FromTType(types.NewPointer(typeName.Type())).Implements(typesutil.FromTType(scanner.ioWriterInterface)) {
 		return scanner.setDef(typeName, oas.Binary())
 	}
 
@@ -160,25 +167,31 @@ func (scanner *DefinitionScanner) Def(ctx context.Context, typeName *types.TypeN
 		scanner.enums[typePkg] = enum.NewEnumScanner(typePkg)
 	}
 	enumValues := scanner.enums[typePkg].Enum(typeName)
+	var description = new(bytes.Buffer)
+	fmt.Fprintln(description, ">")
 	if len(enumValues) != 0 {
 		var keyLabel = make(map[string]string, 0)
 		for _, ev := range enumValues {
 			if ev.StringValue != nil {
 				s.Enum = append(s.Enum, ev.StringValue)
 				keyLabel[*ev.StringValue] = ev.Label
+				fmt.Fprintln(description, fmt.Sprintf("* `%s` - %s", *ev.StringValue, ev.Label))
 				s.Type = oas.TypeString
 			} else if ev.IntValue != nil {
 				s.Enum = append(s.Enum, ev.IntValue)
 				keyLabel[strconv.FormatInt(*ev.IntValue, 10)] = ev.Label
+				fmt.Fprintln(description, fmt.Sprintf("* `%d` - %s", *ev.IntValue, ev.Label))
 				s.Type = oas.TypeInteger
 			} else if ev.FloatValue != nil {
 				s.Enum = append(s.Enum, ev.FloatValue)
 				keyLabel[strconv.FormatFloat(*ev.FloatValue, 'g', -1, 64)] = ev.Label
+				fmt.Fprintln(description, fmt.Sprintf("* `%s` - %s", strconv.FormatFloat(*ev.FloatValue, 'g', -1, 64), ev.Label))
 				s.Type = oas.TypeNumber
 			}
 
 		}
 		s.AddExtension(XEnumLabels, keyLabel)
+		s.Description = description.String()
 	}
 
 	return scanner.setDef(typeName, s)

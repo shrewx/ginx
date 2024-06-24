@@ -24,6 +24,19 @@ import (
 	"time"
 )
 
+const (
+	Query     = "query"
+	Path      = "path"
+	Form      = "form"
+	UrlEncode = "urlencoded"
+	Multipart = "multipart"
+	Body      = "body"
+	Head      = "header"
+	Cookies   = "cookies"
+)
+
+const DefaultTimeout = 5 * time.Second
+
 type Client struct {
 	Protocol string
 	Host     string
@@ -81,12 +94,25 @@ func (f *Client) newRequest(ctx context.Context, req interface{}) (*http.Request
 }
 
 func (f *Client) newRequestWithContext(ctx context.Context, method string, rawUrl string, v interface{}) (*http.Request, error) {
+	header := http.Header{}
+	// get lang from ctx with LangHeader key
+	lang, ok := ctx.Value(LangHeader).(string)
+	if ok {
+		header.Add(LangHeader, lang)
+	} else {
+		header.Add(LangHeader, ginx.i18n)
+	}
+
 	if v == nil {
-		return http.NewRequestWithContext(ctx, method, rawUrl, nil)
+		req, err := http.NewRequestWithContext(ctx, method, rawUrl, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header = header
+		return req, nil
 	}
 
 	query := url.Values{}
-	header := http.Header{}
 	cookies := url.Values{}
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
@@ -111,24 +137,24 @@ func (f *Client) newRequestWithContext(ctx context.Context, method string, rawUr
 				name = strings.ToLower(field.Name[:1]) + field.Name[1:]
 			}
 			switch in {
-			case HEADER:
+			case Head:
 				header[textproto.CanonicalMIMEHeaderKey(name)] = append(header[textproto.CanonicalMIMEHeaderKey(name)], rv.Field(i).String())
-			case COOKIES:
+			case Cookies:
 				cookies[name] = append(cookies[name], rv.Field(i).String())
-			case QUERY:
+			case Query:
 				query.Add(name, rv.Field(i).String())
-			case PATH:
+			case Path:
 				rawUrl = strings.Replace(rawUrl, fmt.Sprintf(":%s", name), cast.ToString(rv.Field(i).Interface()), -1)
-			case BODY:
+			case Body:
 				data, _ := json.Marshal(rv.Field(i).Interface())
 				body.Write(data)
 				header.Set("Content-Type", MineApplicationJson)
-			case URLENCODED:
+			case UrlEncode:
 				query.Add(name, rv.Field(i).String())
 				header.Set("Content-Type", mime.FormatMediaType(MineApplicationUrlencoded, map[string]string{
 					"param": "value",
 				}))
-			case FORM, MULTIPART:
+			case Form, Multipart:
 				switch typ := rv.Field(i).Interface().(type) {
 				case MultipartFile:
 					part, err := writer.CreateFormFile(name, typ.Filename)
@@ -249,7 +275,34 @@ func DefaultHttpTransportFromContext(ctx context.Context) *http.Transport {
 	return nil
 }
 
-func GetShortConnClientContext(ctx context.Context, timeout time.Duration) *http.Client {
+type clientTimeout struct{}
+
+func SetClientTimeout(ctx context.Context, timeout time.Duration) context.Context {
+	if timeout < 0 {
+		timeout = DefaultTimeout
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	return context.WithValue(ctx, clientTimeout{}, timeout)
+}
+
+func DefaultClientTimeout(ctx context.Context) *time.Duration {
+	if ctx == nil {
+		return nil
+	}
+	if t, ok := ctx.Value(contextKeyDefaultHttpTransport{}).(time.Duration); ok {
+		if t < 0 {
+			return nil
+		}
+		return &t
+	}
+
+	return nil
+}
+
+func GetShortConnClientContext(ctx context.Context, clientTimeout time.Duration) *http.Client {
 	t := DefaultHttpTransportFromContext(ctx)
 
 	if t != nil {
@@ -271,8 +324,13 @@ func GetShortConnClientContext(ctx context.Context, timeout time.Duration) *http
 		panic(err)
 	}
 
+	timeout := DefaultClientTimeout(ctx)
+	if timeout != nil {
+		clientTimeout = *timeout
+	}
+
 	client := &http.Client{
-		Timeout:   timeout,
+		Timeout:   clientTimeout,
 		Transport: otelhttp.NewTransport(t),
 	}
 

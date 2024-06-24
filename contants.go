@@ -1,17 +1,6 @@
 package ginx
 
 const (
-	QUERY      = "query"
-	PATH       = "path"
-	FORM       = "form"
-	URLENCODED = "urlencoded"
-	MULTIPART  = "multipart"
-	BODY       = "body"
-	HEADER     = "header"
-	COOKIES    = "cookies"
-)
-
-const (
 	I18nZH     = "zh"
 	I18nEN     = "en"
 	LangHeader = "GinX-Lang-Header"

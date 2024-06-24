@@ -51,69 +51,81 @@ func (scanner *StatusErrScanner) StatusErrorsInFunc(typeFunc *types.Func) []*sta
 	funcDecl := pkg.FuncDeclOf(typeFunc)
 
 	if funcDecl != nil {
-		ast.Inspect(funcDecl, func(node ast.Node) bool {
-			switch v := node.(type) {
-			case *ast.CallExpr:
-				identList := packagesx.GetIdentChainOfCallFunc(v.Fun)
-				if len(identList) > 0 {
-					callIdent := identList[len(identList)-1]
-					obj := pkg.TypesInfo.ObjectOf(callIdent)
+		func() {
+			// sometime get nil panic ignore
+			defer func() {
+				if err := recover(); err != nil {
+				}
+			}()
+			ast.Inspect(funcDecl, func(node ast.Node) bool {
+				if node != nil {
+					switch v := node.(type) {
+					case *ast.CallExpr:
+						identList := packagesx.GetIdentChainOfCallFunc(v.Fun)
+						if len(identList) > 0 {
+							callIdent := identList[len(identList)-1]
+							obj := pkg.TypesInfo.ObjectOf(callIdent)
 
-					if obj != nil {
-						if callIdent.Name == "Wrap" && obj.Pkg().Path() == statusErrPkgPath {
+							if obj != nil {
+								if callIdent.Name == "Wrap" && obj.Pkg().Path() == statusErrPkgPath {
 
-							code := 0
-							key := ""
-							msg := ""
-							desc := make([]string, 0)
+									var code = 0
+									key := ""
+									msg := ""
+									desc := make([]string, 0)
 
-							for i, arg := range v.Args[1:] {
-								tv, err := pkg.Eval(arg)
-								if err != nil {
-									continue
-								}
+									for i, arg := range v.Args[1:] {
+										tv, err := pkg.Eval(arg)
+										if err != nil {
+											continue
+										}
 
-								switch i {
-								case 0: // code
-									code, _ = strconv.Atoi(tv.Value.String())
-								case 1: // key
-									key, _ = strconv.Unquote(tv.Value.String())
-								case 2: // msg
-									msg, _ = strconv.Unquote(tv.Value.String())
-								default:
-									d, _ := strconv.Unquote(tv.Value.String())
-									desc = append(desc, d)
+										switch i {
+										case 0: // code
+											code, _ = strconv.Atoi(tv.Value.String())
+										case 1: // key
+											key, _ = strconv.Unquote(tv.Value.String())
+										case 2: // msg
+											msg, _ = strconv.Unquote(tv.Value.String())
+										default:
+											d, _ := strconv.Unquote(tv.Value.String())
+											desc = append(desc, d)
+										}
+									}
+
+									if code > 0 {
+										if msg == "" {
+											msg = key
+										}
+
+										scanner.appendStateErrs(typeFunc, Wrap(errors.New(""), code, key, append([]string{msg}, desc...)...))
+									}
+
 								}
 							}
 
-							if code > 0 {
-								if msg == "" {
-									msg = key
+							// Deprecated old code defined
+							if obj != nil && obj.Pkg() != nil && obj.Pkg().Path() == scanner.StatusErrType.Obj().Pkg().Path() {
+								for i := range identList {
+									scanner.mayAddStateErrorByObject(typeFunc, pkg.TypesInfo.ObjectOf(identList[i]))
 								}
-
-								scanner.appendStateErrs(typeFunc, Wrap(errors.New(""), code, key, append([]string{msg}, desc...)...))
+								return false
+							}
+							if obj != nil {
+								if nextTypeFunc, ok := obj.(*types.Func); ok && nextTypeFunc != nil && nextTypeFunc != typeFunc && nextTypeFunc.Pkg() != nil {
+									scanner.appendStateErrs(typeFunc, scanner.StatusErrorsInFunc(nextTypeFunc)...)
+								}
 							}
 
 						}
-					}
-
-					// Deprecated old code defined
-					if obj != nil && obj.Pkg() != nil && obj.Pkg().Path() == scanner.StatusErrType.Obj().Pkg().Path() {
-						for i := range identList {
-							scanner.mayAddStateErrorByObject(typeFunc, pkg.TypesInfo.ObjectOf(identList[i]))
-						}
-						return false
-					}
-
-					if nextTypeFunc, ok := obj.(*types.Func); ok && nextTypeFunc != typeFunc && nextTypeFunc.Pkg() != nil {
-						scanner.appendStateErrs(typeFunc, scanner.StatusErrorsInFunc(nextTypeFunc)...)
+					case *ast.Ident:
+						scanner.mayAddStateErrorByObject(typeFunc, pkg.TypesInfo.ObjectOf(v))
 					}
 				}
-			case *ast.Ident:
-				scanner.mayAddStateErrorByObject(typeFunc, pkg.TypesInfo.ObjectOf(v))
-			}
-			return true
-		})
+
+				return true
+			})
+		}()
 
 		doc := packagesx.StringifyCommentGroup(funcDecl.Doc)
 		scanner.appendStateErrs(typeFunc, pickStatusErrorsFromDoc(doc)...)

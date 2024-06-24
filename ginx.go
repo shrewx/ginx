@@ -6,9 +6,9 @@ import (
 	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/ilyakaznacheev/cleanenv"
-	"github.com/shrewx/ginx/pkg/conf/server"
-	"github.com/shrewx/ginx/pkg/service_discovery"
-	"github.com/shrewx/ginx/pkg/trace"
+	"github.com/shrewx/ginx/v2/pkg/conf/server"
+	"github.com/shrewx/ginx/v2/pkg/service_discovery"
+	"github.com/shrewx/ginx/v2/pkg/trace"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"net/http"
@@ -60,6 +60,7 @@ func AddCommand(cmds ...*cobra.Command) {
 }
 
 // Launch function is program entry， you can start a server like this:
+//
 //	ginx.Launch(func(cmd *cobra.Command, args []string) {
 //
 //		ginx.Parse(&ServerConfig)
@@ -96,10 +97,7 @@ func RunServer(config *server.Config, r *GinRouter) {
 	}
 
 	// trace agent
-	agent := trace.NewAgent(config.Name, config.TraceEndpoint, config.TraceExporter)
-	if err := agent.Init(); err != nil {
-		panic(err)
-	}
+	agent := initTrace(config)
 
 	// init engine
 	instance().engine = initGinEngine(r, agent)
@@ -231,4 +229,13 @@ func waitSignal(errCh chan error) error {
 	}
 
 	return nil
+}
+
+func initTrace(conf *server.Config) *trace.Agent {
+	agent := trace.NewAgent(conf.Name, conf.TraceEndpoint, conf.TraceExporter)
+	if err := agent.Init(); err != nil {
+		panic(err)
+	}
+
+	return agent
 }

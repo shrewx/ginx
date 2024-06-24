@@ -3,28 +3,30 @@ package client
 import (
 	"context"
 	"fmt"
+	"github.com/shrewx/ginx/v2/pkg/enum"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/go-courier/codegen"
 	"github.com/go-courier/oas"
 	"github.com/go-courier/packagesx"
-	"github.com/shrewx/ginx/pkg/openapi"
+	"github.com/shrewx/ginx/v2/pkg/openapi"
 )
 
 func NewTypeGenerator(serviceName string, file *codegen.File) *TypeGenerator {
 	return &TypeGenerator{
 		ServiceName: serviceName,
 		File:        file,
-		// Enums:       map[string]scanner.Options{},
+		Enums:       map[string]enum.Values{},
 	}
 }
 
 type TypeGenerator struct {
 	ServiceName string
 	File        *codegen.File
-	// Enums       map[string]scanner.Options
+	Enums       map[string]enum.Values
 }
 
 func (g *TypeGenerator) Scan(ctx context.Context, openapi *oas.OpenAPI) {
@@ -70,17 +72,17 @@ func (g *TypeGenerator) Scan(ctx context.Context, openapi *oas.OpenAPI) {
 		)
 	}
 
-	//enumNames := make([]string, 0)
-	//for id := range g.Enums {
-	//	enumNames = append(enumNames, id)
-	//}
-	//sort.Strings(enumNames)
-	//
-	//for _, enumName := range enumNames {
-	//	options := g.Enums[enumName]
-	//
-	//	writeEnumDefines(g.File, enumName, options)
-	//}
+	enumNames := make([]string, 0)
+	for id := range g.Enums {
+		enumNames = append(enumNames, id)
+	}
+	sort.Strings(enumNames)
+
+	for _, enumName := range enumNames {
+		values := g.Enums[enumName]
+
+		writeEnumDefines(g.File, enumName, values)
+	}
 }
 
 func getPkgImportPathAndExpose(schema *oas.Schema) (string, string) {
@@ -145,67 +147,41 @@ func (g *TypeGenerator) TypeIndirect(ctx context.Context, schema *oas.Schema) (c
 		}
 	}
 
-	//if schema.Enum != nil {
-	//	name := codegen.UpperCamelCase(g.ServiceName)
-	//
-	//	if id, ok := schema.Extensions[openapi.XGoStructName].(string); ok {
-	//		name = name + id
-	//
-	//		enumOptions := scanner.Options{}
-	//
-	//		enumLabels := make([]string, len(schema.Enum))
-	//
-	//		if xEnumLabels, ok := schema.Extensions[openapi.XEnumLabels]; ok {
-	//			if labels, ok := xEnumLabels.([]interface{}); ok {
-	//				for i, l := range labels {
-	//					if v, ok := l.(string); ok {
-	//						enumLabels[i] = v
-	//					}
-	//				}
-	//			}
-	//		}
-	//
-	//		if options, ok := schema.Extensions[openapi.XEnumOptions]; ok {
-	//			if list, ok := options.([]interface{}); ok {
-	//				for i, l := range list {
-	//					if opt, ok := l.(map[string]interface{}); ok {
-	//						if s, ok := opt["label"]; ok {
-	//							if v, ok := s.(string); ok {
-	//								enumLabels[i] = v
-	//							}
-	//						}
-	//					}
-	//				}
-	//			}
-	//		}
-	//
-	//		for i, e := range schema.Enum {
-	//			o := scanner.Option{}
-	//
-	//			switch v := e.(type) {
-	//			case float64:
-	//				if math.Floor(v) == v {
-	//					vi := int64(v)
-	//					o.Int = &vi
-	//				} else {
-	//					o.Float = &v
-	//				}
-	//			case string:
-	//				o.Str = &v
-	//			}
-	//
-	//			if len(enumLabels) > i {
-	//				o.Label = enumLabels[i]
-	//			}
-	//
-	//			enumOptions = append(enumOptions, o)
-	//		}
-	//
-	//		g.Enums[name] = enumOptions
-	//
-	//		return codegen.Type(name), true
-	//	}
-	//}
+	if schema.Enum != nil {
+		name := codegen.UpperCamelCase(g.ServiceName)
+
+		if id, ok := schema.Extensions[openapi.XGoStructName].(string); ok {
+			name = name + id
+
+			enumValues := enum.Values{}
+
+			enumLabels := make(map[string]string, len(schema.Enum))
+
+			if xEnumLabels, ok := schema.Extensions[openapi.XEnumLabels]; ok {
+				if labels, ok := xEnumLabels.(map[string]interface{}); ok {
+					for k, v := range labels {
+						if v, ok := v.(string); ok {
+							enumLabels[k] = v
+						}
+					}
+				}
+			}
+
+			for _, e := range schema.Enum {
+				o := enum.Value{}
+				value := e.(string)
+				o.Key = strings.ToUpper(value)
+				o.StringValue = &value
+				o.Label = enumLabels[value]
+
+				enumValues = append(enumValues, o)
+			}
+
+			g.Enums[name] = enumValues
+
+			return codegen.Type(name), true
+		}
+	}
 
 	if len(schema.AllOf) > 0 {
 		if schema.AllOf[len(schema.AllOf)-1].Type == oas.TypeObject {
@@ -242,7 +218,7 @@ func (g *TypeGenerator) TypeIndirect(ctx context.Context, schema *oas.Schema) (c
 func (g *TypeGenerator) BasicType(schemaType string, format string) codegen.SnippetType {
 	switch format {
 	case "binary":
-		return codegen.Type(g.File.Use("github.com/shrewx/ginx", "MultipartFile"))
+		return codegen.Type(g.File.Use("github.com/shrewx/ginx/v2", "MultipartFile"))
 	case "byte", "int", "int8", "int16", "int32", "int64", "rune", "uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "float32", "float64":
 		return codegen.BuiltInType(format)
 	case "float":
@@ -387,48 +363,48 @@ func mayComposedAllOf(schema *oas.Schema) *oas.Schema {
 	return schema
 }
 
-//func writeEnumDefines(file *codegen.File, name string, options scanner.Options) {
-//	if len(options) == 0 {
-//		return
-//	}
-//
-//	switch options[0].Value().(type) {
-//	case int64:
-//		file.WriteBlock(
-//			codegen.DeclType(codegen.Var(codegen.Int64, name)),
-//		)
-//	case float64:
-//		file.WriteBlock(
-//			codegen.DeclType(codegen.Var(codegen.Float64, name)),
-//		)
-//	case string:
-//		file.WriteBlock(
-//			codegen.DeclType(codegen.Var(codegen.String, name)),
-//		)
-//	}
-//
-//	file.WriteString(`
-//const (
-//`)
-//
-//	sort.Sort(options)
-//
-//	for _, item := range options {
-//		v := item.Value()
-//		value := v
-//
-//		switch n := v.(type) {
-//		case string:
-//			value = strconv.Quote(n)
-//		case float64:
-//			vf := v.(float64)
-//			v = strings.Replace(strconv.FormatFloat(vf, 'f', -1, 64), ".", "_", 1)
-//		}
-//
-//		_, _ = fmt.Fprintf(file, `%s__%v %s = %v // %s
-//`, codegen.UpperSnakeCase(name), v, name, value, item.Label)
-//	}
-//
-//	file.WriteString(`)
-//`)
-//}
+func writeEnumDefines(file *codegen.File, name string, enumValues enum.Values) {
+	if len(enumValues) == 0 {
+		return
+	}
+
+	switch enumValues[0].Type().(type) {
+	case int64:
+		file.WriteBlock(
+			codegen.DeclType(codegen.Var(codegen.Int64, name)),
+		)
+	case float64:
+		file.WriteBlock(
+			codegen.DeclType(codegen.Var(codegen.Float64, name)),
+		)
+	case string:
+		file.WriteBlock(
+			codegen.DeclType(codegen.Var(codegen.String, name)),
+		)
+	}
+
+	file.WriteString(`
+const (
+`)
+
+	sort.Sort(enumValues)
+
+	for _, item := range enumValues {
+		v := item.Type()
+		value := v
+
+		switch n := v.(type) {
+		case string:
+			value = strconv.Quote(n)
+		case float64:
+			vf := v.(float64)
+			v = strings.Replace(strconv.FormatFloat(vf, 'f', -1, 64), ".", "_", 1)
+		}
+
+		_, _ = fmt.Fprintf(file, `%s__%v %s = %v // %s
+`, codegen.UpperSnakeCase(name), strings.ToUpper(v.(string)), name, value, item.Label)
+	}
+
+	file.WriteString(`)
+`)
+}

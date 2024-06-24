@@ -24,20 +24,42 @@ func (g *ServiceClientGenerator) Scan(ctx context.Context, openapi *oas.OpenAPI)
 
 	g.WriteClient()
 
-	g.File.WriteBlock(codegen.Expr(`
-func (c *` + g.ClientInstanceName() + `) WithContext(ctx context.Context) ` + g.ClientInterfaceName() + ` {
-	cc := new(` + g.ClientInstanceName() + `)
-	cc.Client = c.Client
-	cc.ctx = ctx
-	return cc
+	varContext := codegen.Var(codegen.Type(g.File.Use("context", "Context")), "ctx")
+	varTimeout := codegen.Var(codegen.Type(g.File.Use("time", "Duration")), "timeout")
+
+	g.File.WriteBlock(codegen.Func(varContext).Named("WithContext").
+		MethodOf(codegen.Var(codegen.Star(codegen.Type(g.ClientInstanceName())), "c")).
+		Do(
+			codegen.Expr("cc := new(?)", codegen.Type(g.ClientInstanceName())),
+			codegen.Expr(`
+cc.Client = c.Client
+cc.ctx = ctx
+`),
+			codegen.Return(codegen.Id("cc"))).
+		Return(codegen.Var(codegen.Type(g.ClientInterfaceName()))),
+	)
+
+	g.File.WriteBlock(codegen.Func(varContext, varTimeout).Named("WithTimeout").
+		MethodOf(codegen.Var(codegen.Star(codegen.Type(g.ClientInstanceName())), "c")).
+		Do(
+			codegen.Expr("cc := new(?)", codegen.Type(g.ClientInstanceName())),
+			codegen.Expr(`
+cc.Client = c.Client
+cc.ctx = ?
+`, codegen.Call(g.File.Use("git.zdns.cn/ngo/servicex", "SetClientTimeout"), codegen.Id("ctx"), codegen.Id("timeout"))),
+			codegen.Return(codegen.Id("cc"))).
+		Return(codegen.Var(codegen.Type(g.ClientInterfaceName()))),
+	)
+
+	g.File.WriteBlock(codegen.Func().Named("Context").
+		MethodOf(codegen.Var(codegen.Star(codegen.Type(g.ClientInstanceName())), "c")).
+		Do(codegen.Expr(`if c.ctx != nil {
+	return c.ctx
 }
-func (c *` + g.ClientInstanceName() + `) Context() context.Context {
-	if c.ctx != nil {
-      return c.ctx
-    }
-	return context.Background()
-}
-`))
+`),
+			codegen.Return(codegen.Call(g.File.Use("context", "Background")))).
+		Return(codegen.Var(codegen.Type(g.File.Use("context", "Context")))),
+	)
 
 	eachOperation(openapi, func(method string, path string, op *oas.Operation) {
 		g.File.WriteBlock(
@@ -78,7 +100,7 @@ func (g *ServiceClientGenerator) ClientInstanceName() string {
 func (g *ServiceClientGenerator) WriteClient() {
 	g.File.WriteBlock(
 		codegen.Func(
-			codegen.Var(codegen.Type(g.File.Use("github.com/shrewx/ginx", "Client")), "c"),
+			codegen.Var(codegen.Type(g.File.Use("github.com/shrewx/ginx/v2", "Client")), "c"),
 		).Return(
 			codegen.Var(codegen.Star(codegen.Type(g.ClientInstanceName()))),
 		).Named(
@@ -94,7 +116,7 @@ func (g *ServiceClientGenerator) WriteClient() {
 	g.File.WriteBlock(
 		codegen.DeclType(
 			codegen.Var(codegen.Struct(
-				codegen.Var(codegen.Type(g.File.Use("github.com/shrewx/ginx", "Client")), "Client"),
+				codegen.Var(codegen.Type(g.File.Use("github.com/shrewx/ginx/v2", "Client")), "Client"),
 				codegen.Var(codegen.Type(g.File.Use("context", "Context")), "ctx"),
 			),
 				g.ClientInstanceName(),

@@ -228,7 +228,7 @@ type CreateUserInfo struct {
 
 ### ContentType
 
-如上面提到的，默认的情况下response的contentType是`application/json`, 如果需要其他类型的，框架封装了一些[Mine](https://github.com/shrewx/ginx/-/blob/master/mine.go)结构体可使用。
+如上面提到的，默认的情况下response的contentType是`application/json`, 如果需要其他类型的，框架封装了一些[Mine](https://github.com/shrewx/ginx/v2/-/blob/master/mine.go)结构体可使用。
 
 #### 文件下载
 ```go
@@ -335,7 +335,7 @@ toolx gen client -s "客户端名称" -u "openapi.jso（支持url和本地路径
 在 Preferences --> Editor --> Live Template 添加一个Go Template
 ```go
 import (
-	"github.com/shrewx/ginx"
+	"github.com/shrewx/ginx/v2"
 	"github.com/gin-gonic/gin"
 )
 

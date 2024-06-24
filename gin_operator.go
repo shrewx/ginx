@@ -3,10 +3,10 @@ package ginx
 import (
 	"fmt"
 	"github.com/gin-gonic/gin"
-	"github.com/shrewx/ginx/pkg/binding"
-	"github.com/shrewx/ginx/pkg/errors"
-	"github.com/shrewx/ginx/pkg/middleware"
-	ptrace "github.com/shrewx/ginx/pkg/trace"
+	"github.com/shrewx/ginx/v2/internal/binding"
+	"github.com/shrewx/ginx/v2/internal/errors"
+	middleware2 "github.com/shrewx/ginx/v2/internal/middleware"
+	ptrace "github.com/shrewx/ginx/v2/pkg/trace"
 	"github.com/shrewx/statuserror"
 	"net/http"
 	"reflect"
@@ -100,8 +100,8 @@ func initGinEngine(r *GinRouter, agent *ptrace.Agent) *gin.Engine {
 
 	// internal middleware
 	root.Use(gin.Recovery())
-	root.Use(middleware.CORS())
-	root.Use(middleware.Telemetry(agent))
+	root.Use(middleware2.CORS())
+	root.Use(middleware2.Telemetry(agent))
 
 	loadGinRouters(root, r)
 
@@ -147,7 +147,10 @@ func loadGinRouters(ir gin.IRouter, r *GinRouter) {
 func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		op = reflect.New(reflect.ValueOf(op).Elem().Type()).Interface().(Operator)
+		// set operation name
 		ctx.Set(OperationName, reflect.TypeOf(op).Elem().Name())
+		// set lang to ctx so that client can know the lang
+		ctx.Set(LangHeader, ctx.GetHeader(LangHeader))
 
 		if err := binding.Validate(ctx, op); err != nil {
 			ginErrorWrapper(errors.BadRequest, ctx)

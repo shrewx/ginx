@@ -1,13 +1,14 @@
 package openapi
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"github.com/go-courier/oas"
 	"github.com/go-courier/packagesx"
 	"github.com/go-courier/reflectx/typesutil"
 	"github.com/pkg/errors"
-	"github.com/shrewx/ginx"
+	"github.com/shrewx/ginx/v2"
 	"github.com/shrewx/statuserror"
 	"github.com/sirupsen/logrus"
 	"go/ast"
@@ -475,6 +476,7 @@ func (operator *Operator) AddNonBodyParameter(parameter *oas.Parameter) {
 	if operator.NonBodyParameters == nil {
 		operator.NonBodyParameters = map[string]*oas.Parameter{}
 	}
+	parameter.Description = parameter.Schema.Description
 	operator.NonBodyParameters[parameter.Name] = parameter
 }
 
@@ -502,7 +504,11 @@ func (operator *Operator) BindOperation(method string, operation *oas.Operation,
 		statusErrorList := make([]string, 0)
 
 		if operation.Responses.Responses != nil {
-			if resp, ok := operation.Responses.Responses[statusError.Code()]; ok {
+			code := statusError.StatusCode()
+			if statusError.StatusCode() < 400 {
+				code = 500
+			}
+			if resp, ok := operation.Responses.Responses[code]; ok {
 				if resp.Extensions != nil {
 					if v, ok := resp.Extensions[XStatusErrs]; ok {
 						if list, ok := v.([]string); ok {
@@ -513,17 +519,33 @@ func (operator *Operator) BindOperation(method string, operation *oas.Operation,
 			}
 		}
 
+		for _, summary := range statusErrorList {
+			if summary == statusError.Summary() {
+				continue
+			}
+		}
+
 		statusErrorList = append(statusErrorList, statusError.Summary())
+		statusErrorList = removeDuplicate(statusErrorList)
 
 		sort.Strings(statusErrorList)
 
 		resp := oas.NewResponse("")
 		resp.AddExtension(XStatusErrs, statusErrorList)
 		if len(statusErrorList) > 0 {
-			resp.Description = statusErrorList[0]
+			var description = new(bytes.Buffer)
+			fmt.Fprintln(description, ">")
+			for _, err := range statusErrorList {
+				fmt.Fprintln(description, fmt.Sprintf("* `%s`", err))
+			}
+			resp.Description = description.String()
 		}
 		resp.AddContent("application/json", oas.NewMediaTypeWithSchema(operator.StatusErrorSchema))
-		operation.AddResponse(statusError.StatusCode(), resp)
+		code := statusError.StatusCode()
+		if statusError.StatusCode() < 400 {
+			code = 500
+		}
+		operation.AddResponse(code, resp)
 	}
 
 	if last {
@@ -583,4 +605,21 @@ func valueOf(v constant.Value) interface{} {
 	}
 
 	return nil
+}
+
+func removeDuplicate(slc []string) []string {
+	result := []string{}
+	for i := range slc {
+		flag := true
+		for j := range result {
+			if slc[i] == result[j] {
+				flag = false
+				break
+			}
+		}
+		if flag {
+			result = append(result, slc[i])
+		}
+	}
+	return result
 }

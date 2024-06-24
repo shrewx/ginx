@@ -2,7 +2,7 @@ package openapi
 
 import (
 	"github.com/go-courier/packagesx"
-	"github.com/shrewx/ginx"
+	"github.com/shrewx/ginx/v2"
 	"go/types"
 	"reflect"
 	"strings"
