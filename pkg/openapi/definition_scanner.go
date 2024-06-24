@@ -9,7 +9,7 @@ import (
 	"github.com/go-courier/packagesx"
 	"github.com/go-courier/reflectx/typesutil"
 	"github.com/pkg/errors"
-	"github.com/shrewx/enum"
+	"github.com/shrewx/ginx/pkg/enum"
 	"github.com/sirupsen/logrus"
 	"go/ast"
 	"go/types"

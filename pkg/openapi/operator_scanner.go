@@ -9,7 +9,7 @@ import (
 	"github.com/go-courier/reflectx/typesutil"
 	"github.com/pkg/errors"
 	"github.com/shrewx/ginx"
-	"github.com/shrewx/statuserror"
+	"github.com/shrewx/ginx/pkg/statuserror"
 	"github.com/sirupsen/logrus"
 	"go/ast"
 	"go/constant"

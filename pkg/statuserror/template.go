@@ -5,8 +5,9 @@ package {{ .Package }}
 
 import (
     "fmt"
-	"github.com/shrewx/statuserror"
+	"github.com/shrewx/ginx/pkg/statuserror"
 	"strconv"
+	"strings"
 )
 
 func (v {{ .ClassName }}) StatusErr(args ...interface{}) statuserror.CommonError {
@@ -41,7 +42,7 @@ func (v StatusError) I18n(language string) statuserror.CommonError {
 func (v {{ .ClassName }}) StatusCode() int {
 	strCode := fmt.Sprintf("%d", v.Code())
 	if len(strCode) < 3 {
-		return 0
+		return 400
 	}
 	statusCode, _ := strconv.Atoi(strCode[:3])
 	return statusCode

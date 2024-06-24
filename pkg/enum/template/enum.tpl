@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"database/sql/driver"
 
-	"git.zdns.cn/ngo/servicex/pkg/enum"
+	"github.com/shrewx/ginx/pkg/enum"
 )
 
 func (v {{ .ClassName }}) Int() int {

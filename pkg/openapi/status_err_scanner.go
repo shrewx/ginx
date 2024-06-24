@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-courier/packagesx"
-	"github.com/shrewx/statuserror"
+	"github.com/shrewx/ginx/pkg/statuserror"
 	"go/ast"
 	"go/types"
 	"reflect"
@@ -173,7 +173,7 @@ func (scanner *StatusErrScanner) appendStateErrs(typeFunc *types.Func, statusErr
 }
 
 func (scanner *StatusErrScanner) init() {
-	pkg := scanner.pkg.Pkg("git.zdns.cn/ngo/tools/statuserror")
+	pkg := scanner.pkg.Pkg("github.com/shrewx/ginx/pkg/statuserror")
 	if pkg == nil {
 		return
 	}

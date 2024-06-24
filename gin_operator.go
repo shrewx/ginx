@@ -5,9 +5,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/internal/binding"
 	"github.com/shrewx/ginx/internal/errors"
-	middleware2 "github.com/shrewx/ginx/internal/middleware"
-	ptrace "github.com/shrewx/ginx/pkg/trace"
-	"github.com/shrewx/statuserror"
+	"github.com/shrewx/ginx/internal/middleware"
+	"github.com/shrewx/ginx/pkg/statuserror"
+	"github.com/shrewx/ginx/pkg/trace"
 	"net/http"
 	"reflect"
 	"strings"
@@ -90,7 +90,7 @@ func (g *GinRouter) Register(r Operator) {
 	}
 }
 
-func initGinEngine(r *GinRouter, agent *ptrace.Agent) *gin.Engine {
+func initGinEngine(r *GinRouter, agent *trace.Agent) *gin.Engine {
 	root := gin.New()
 
 	// health
@@ -100,8 +100,8 @@ func initGinEngine(r *GinRouter, agent *ptrace.Agent) *gin.Engine {
 
 	// internal middleware
 	root.Use(gin.Recovery())
-	root.Use(middleware2.CORS())
-	root.Use(middleware2.Telemetry(agent))
+	root.Use(middleware.CORS())
+	root.Use(middleware.Telemetry(agent))
 
 	loadGinRouters(root, r)
 

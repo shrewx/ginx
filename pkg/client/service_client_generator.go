@@ -46,7 +46,7 @@ cc.ctx = ctx
 			codegen.Expr(`
 cc.Client = c.Client
 cc.ctx = ?
-`, codegen.Call(g.File.Use("git.zdns.cn/ngo/servicex", "SetClientTimeout"), codegen.Id("ctx"), codegen.Id("timeout"))),
+`, codegen.Call(g.File.Use("github.com/shrewx/ginx", "SetClientTimeout"), codegen.Id("ctx"), codegen.Id("timeout"))),
 			codegen.Return(codegen.Id("cc"))).
 		Return(codegen.Var(codegen.Type(g.ClientInterfaceName()))),
 	)

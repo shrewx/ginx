@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-courier/reflectx"
-	"github.com/shrewx/statuserror"
+	"github.com/shrewx/ginx/pkg/statuserror"
 	"github.com/spf13/cast"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"golang.org/x/net/http2"
