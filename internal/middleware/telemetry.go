@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"github.com/gin-gonic/gin"
-	ptrace "github.com/shrewx/ginx/v2/pkg/trace"
+	ptrace "github.com/shrewx/ginx/pkg/trace"
 	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -16,7 +16,7 @@ const (
 	Unknown       = "unknown"
 	OperationName = "x-operation-name"
 	TracerKey     = "x-tracer-key"
-	TracerName    = "github.com/shrewx/ginx/v2/tracer"
+	TracerName    = "github.com/shrewx/ginx/tracer"
 )
 
 func Telemetry(agent *ptrace.Agent) gin.HandlerFunc {

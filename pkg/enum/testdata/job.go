@@ -1,5 +1,7 @@
 package testdata
 
+//go:generate toolx gen enum Job
+
 type Job string
 
 const (

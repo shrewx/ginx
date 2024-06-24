@@ -8,7 +8,7 @@ import (
 	"github.com/go-courier/packagesx"
 	"github.com/go-courier/reflectx/typesutil"
 	"github.com/pkg/errors"
-	"github.com/shrewx/ginx/v2"
+	"github.com/shrewx/ginx"
 	"github.com/shrewx/statuserror"
 	"github.com/sirupsen/logrus"
 	"go/ast"

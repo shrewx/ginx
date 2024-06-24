@@ -1,7 +1,7 @@
 package client
 
 import (
-	"github.com/shrewx/ginx/v2/pkg/openapi"
+	"github.com/shrewx/ginx/pkg/openapi"
 	"sort"
 	"strings"
 

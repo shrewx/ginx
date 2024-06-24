@@ -3,7 +3,7 @@ package middleware
 import (
 	"bytes"
 	"github.com/gin-gonic/gin"
-	"github.com/shrewx/ginx/v2/pkg/logx"
+	"github.com/shrewx/ginx/pkg/logx"
 	"io"
 	"net/http"
 )

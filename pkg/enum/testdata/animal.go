@@ -1,6 +1,6 @@
 package testdata
 
-//go:generate tools gen enum Animal
+//go:generate toolx gen enum Animal
 
 type Animal int
 

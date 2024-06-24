@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
-	"github.com/shrewx/ginx/v2"
+	"github.com/shrewx/ginx"
 	"net/http"
 	"regexp"
 
@@ -87,10 +87,10 @@ func (g *OperationGenerator) WriteOperation(ctx context.Context, method string, 
 	g.File.WriteBlock(
 		codegen.Func(
 			codegen.Var(codegen.Type(g.File.Use("context", "Context")), "ctx"),
-			codegen.Var(codegen.Type(g.File.Use("github.com/shrewx/ginx/v2", "Client")), "c"),
+			codegen.Var(codegen.Type(g.File.Use("github.com/shrewx/ginx", "Client")), "c"),
 		).
 			Return(
-				codegen.Var(codegen.Type(g.File.Use("github.com/shrewx/ginx/v2", "Response"))),
+				codegen.Var(codegen.Type(g.File.Use("github.com/shrewx/ginx", "Response"))),
 				codegen.Var(codegen.Error),
 			).
 			Named("Invoke").
@@ -104,7 +104,7 @@ func (g *OperationGenerator) WriteOperation(ctx context.Context, method string, 
 		g.File.WriteBlock(
 			codegen.Func(
 				codegen.Var(codegen.Type(g.File.Use("context", "Context")), "ctx"),
-				codegen.Var(codegen.Type(g.File.Use("github.com/shrewx/ginx/v2", "Client")), "c"),
+				codegen.Var(codegen.Type(g.File.Use("github.com/shrewx/ginx", "Client")), "c"),
 			).
 				Return(
 					codegen.Var(codegen.Star(respType)),
@@ -128,7 +128,7 @@ response.Bind(resp)
 	g.File.WriteBlock(
 		codegen.Func(
 			codegen.Var(codegen.Type(g.File.Use("context", "Context")), "ctx"),
-			codegen.Var(codegen.Type(g.File.Use("github.com/shrewx/ginx/v2", "Client")), "c"),
+			codegen.Var(codegen.Type(g.File.Use("github.com/shrewx/ginx", "Client")), "c"),
 		).
 			Return(
 				codegen.Var(codegen.Error),

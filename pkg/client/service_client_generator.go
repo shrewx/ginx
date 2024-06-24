@@ -100,7 +100,7 @@ func (g *ServiceClientGenerator) ClientInstanceName() string {
 func (g *ServiceClientGenerator) WriteClient() {
 	g.File.WriteBlock(
 		codegen.Func(
-			codegen.Var(codegen.Type(g.File.Use("github.com/shrewx/ginx/v2", "Client")), "c"),
+			codegen.Var(codegen.Type(g.File.Use("github.com/shrewx/ginx", "Client")), "c"),
 		).Return(
 			codegen.Var(codegen.Star(codegen.Type(g.ClientInstanceName()))),
 		).Named(
@@ -116,7 +116,7 @@ func (g *ServiceClientGenerator) WriteClient() {
 	g.File.WriteBlock(
 		codegen.DeclType(
 			codegen.Var(codegen.Struct(
-				codegen.Var(codegen.Type(g.File.Use("github.com/shrewx/ginx/v2", "Client")), "Client"),
+				codegen.Var(codegen.Type(g.File.Use("github.com/shrewx/ginx", "Client")), "Client"),
 				codegen.Var(codegen.Type(g.File.Use("context", "Context")), "ctx"),
 			),
 				g.ClientInstanceName(),

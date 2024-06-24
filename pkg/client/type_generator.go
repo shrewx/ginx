@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
-	"github.com/shrewx/ginx/v2/pkg/enum"
+	"github.com/shrewx/ginx/pkg/enum"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -12,7 +12,7 @@ import (
 	"github.com/go-courier/codegen"
 	"github.com/go-courier/oas"
 	"github.com/go-courier/packagesx"
-	"github.com/shrewx/ginx/v2/pkg/openapi"
+	"github.com/shrewx/ginx/pkg/openapi"
 )
 
 func NewTypeGenerator(serviceName string, file *codegen.File) *TypeGenerator {
@@ -218,7 +218,7 @@ func (g *TypeGenerator) TypeIndirect(ctx context.Context, schema *oas.Schema) (c
 func (g *TypeGenerator) BasicType(schemaType string, format string) codegen.SnippetType {
 	switch format {
 	case "binary":
-		return codegen.Type(g.File.Use("github.com/shrewx/ginx/v2", "MultipartFile"))
+		return codegen.Type(g.File.Use("github.com/shrewx/ginx", "MultipartFile"))
 	case "byte", "int", "int8", "int16", "int32", "int64", "rune", "uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "float32", "float64":
 		return codegen.BuiltInType(format)
 	case "float":

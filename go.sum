@@ -295,8 +295,6 @@ github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 h1:nn5Wsu0esKSJiIVhscUt
 github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529/go.mod h1:DxrIzT+xaE7yg65j358z/aeFdxmN0P9QXhEzd20vsDc=
 github.com/shrewx/enum v0.0.0-20220817101904-3ffdba5b63db h1:Fnf7CouyjVbFYYe3XQq49l3BFjhWD+nU3YClyXjG0vg=
 github.com/shrewx/enum v0.0.0-20220817101904-3ffdba5b63db/go.mod h1:TivJ3Vsz6ccmRXaogm5wwze03eqBlWgcfVbrxQKmXKQ=
-github.com/shrewx/statuserror v0.0.0-20220813053810-856d0205fd39 h1:jzZRlCGf7FqvPVfx/HrZqQ7FiYpo34VIqHS5vMErVSw=
-github.com/shrewx/statuserror v0.0.0-20220813053810-856d0205fd39/go.mod h1:v5RPF+teszLoSJk7Xu3s0Ddz4mG/zM85N4AJZbrHbZ4=
 github.com/shrewx/statuserror v0.0.0-20221130064632-e1fd799f4b61 h1:a6nJW1u+KUfqi0BEvKsOJNHDikKSKMmbl8jT+ULtMbQ=
 github.com/shrewx/statuserror v0.0.0-20221130064632-e1fd799f4b61/go.mod h1:v5RPF+teszLoSJk7Xu3s0Ddz4mG/zM85N4AJZbrHbZ4=
 github.com/shrewx/stringx v0.0.0-20220813052717-dd57986fd4d1/go.mod h1:yj9ILUgf8NEjgwsBOhK7n6AeO41/k8SWX6N0lMttWP8=
@@ -499,6 +497,8 @@ gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c h1:Hei/4ADfdWqJk1ZMxUNpqntN
 gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c/go.mod h1:JHkPIbrfpd72SG/EVd6muEfDQjcINNoR0C8j2r3qZ4Q=
 gopkg.in/errgo.v2 v2.1.0/go.mod h1:hNsd1EY+bozCKY1Ytp96fpM3vjJbqLJn88ws8XvfDNI=
 gopkg.in/fsnotify.v1 v1.4.7/go.mod h1:Tz8NjZHkW78fSQdbUxIjBTcgA1z1m8ZHf0WmKUhAMys=
+gopkg.in/natefinch/lumberjack.v2 v2.2.1 h1:bBRl1b0OH9s/DuPhuXpNl+VtCaJXFZ5/uEFST95x9zc=
+gopkg.in/natefinch/lumberjack.v2 v2.2.1/go.mod h1:YD8tP3GAjkrDg1eZH7EGmyESg/lsYskCTPBJVb9jqSc=
 gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7/go.mod h1:dt/ZhP58zS4L8KSrWDmTeBkI65Dw0HsyUHuEVlX15mw=
 gopkg.in/yaml.v2 v2.2.1/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
 gopkg.in/yaml.v2 v2.2.2/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
