@@ -179,6 +179,7 @@ func (scanner *OperatorScanner) scanReturns(ctx context.Context, op *Operator, t
 		method, ok := typesutil.FromTType(typ).MethodByName("Output")
 		if ok {
 			results, n := scanner.pkg.FuncResultsOf(method.(*typesutil.TMethod).Func)
+			fmt.Printf("%s:%+v\n", op.ID, results)
 			if n == 2 {
 				for _, v := range results[0] {
 					if v.Type != nil {
@@ -233,11 +234,11 @@ func (scanner *OperatorScanner) getResponse(ctx context.Context, tpe types.Type,
 
 	if true {
 		scanResponseWrapper := func(expr ast.Expr) {
-			firstCallExpr := true
+			//firstCallExpr := true
 			ast.Inspect(expr, func(node ast.Node) bool {
 				switch callExpr := node.(type) {
 				case *ast.CallExpr:
-					needEval := true
+					//needEval := true
 					switch e := callExpr.Fun.(type) {
 					case *ast.SelectorExpr:
 						switch e.Sel.Name {
@@ -263,16 +264,16 @@ func (scanner *OperatorScanner) getResponse(ctx context.Context, tpe types.Type,
 							} else {
 								contentType = ginx.MineApplicationOctetStream
 							}
-							needEval = false
+							//needEval = false
 							return false
 						}
-						if firstCallExpr {
-							firstCallExpr = false
-							if len(callExpr.Args) > 0 && needEval {
-								v, _ := scanner.pkg.Eval(callExpr.Args[0])
-								tpe = v.Type
-							}
-						}
+						//if firstCallExpr {
+						//	firstCallExpr = false
+						//	if len(callExpr.Args) > 0 && needEval {
+						//		v, _ := scanner.pkg.Eval(callExpr.Args[0])
+						//		tpe = v.Type
+						//	}
+						//}
 					}
 				}
 				return true
@@ -313,8 +314,8 @@ func (scanner *OperatorScanner) getResponse(ctx context.Context, tpe types.Type,
 	if contentType == "" {
 		contentType = ginx.MineApplicationJson
 	}
-
-	response.AddContent(contentType, oas.NewMediaTypeWithSchema(scanner.DefinitionScanner.GetSchemaByType(ctx, tpe)))
+	s := scanner.DefinitionScanner.GetSchemaByType(ctx, tpe)
+	response.AddContent(contentType, oas.NewMediaTypeWithSchema(s))
 
 	return
 }

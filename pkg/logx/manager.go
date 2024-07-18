@@ -2,7 +2,9 @@ package logx
 
 import (
 	"github.com/natefinch/lumberjack"
+	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/sirupsen/logrus"
+	"os"
 	"path"
 )
 
@@ -14,36 +16,21 @@ const (
 	Timestamp = "2006-01-02 15:04:05"
 )
 
-type Config struct {
-	Label             string `yaml:"label"`
-	LogFileName       string `yaml:"file_name"`
-	LogDirPath        string `yaml:"dir_path"`
-	LogLevel          string `yaml:"log_level"`
-	MaxSize           int    `yaml:"max_size"`
-	MaxBackups        int    `yaml:"max_backups"`
-	Compress          bool   `yaml:"log_compress"`
-	DisableHTMLEscape bool   `yaml:"disable_html_escape"`
-	DisableQuote      bool   `yaml:"disable_quote"`
-
-	ToStdout bool `yaml:"to_stdout"`
-	IsJson   bool `yaml:"is_json"`
-}
-
-func (c *Config) ValidatorConfig() bool {
-	return true
-}
-
-func (c *Config) HandlerConfig() error {
+func Load(c *conf.Log) {
 	if c.Label == "" {
 		c.Label = defaultLogLabel
 	}
 	logManager.Set(LogLabel(c.Label), load(c))
-	return nil
 }
 
-func load(c *Config) *logrus.Logger {
+func load(c *conf.Log) *logrus.Logger {
 	logger := logrus.New()
-
+	if _, err := os.Stat(c.LogDirPath); os.IsNotExist(err) {
+		err := os.Mkdir(c.LogDirPath, 0755)
+		if err != nil {
+			panic(err)
+		}
+	}
 	if c.IsJson {
 		logger.SetFormatter(&logrus.JSONFormatter{
 			DisableHTMLEscape: c.DisableHTMLEscape,
@@ -91,8 +78,8 @@ func Label(label LogLabel) *logrus.Logger {
 	return logger
 }
 
-func defaultConfig() *Config {
-	return &Config{
+func defaultConfig() *conf.Log {
+	return &conf.Log{
 		ToStdout: true,
 		IsJson:   false,
 	}

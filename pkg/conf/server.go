@@ -1,10 +1,10 @@
-package server
+package conf
 
 import (
 	"crypto/tls"
 )
 
-type Config struct {
+type Server struct {
 	ID              string `yaml:"id"`
 	Name            string `yaml:"name"`
 	Host            string `yaml:"host"`
@@ -44,10 +44,10 @@ type Discovery struct {
 	DeregisterTime int `yaml:"deregister_time"`
 }
 
-type Option func(s *Config)
+type Option func(s *Server)
 
-func NewOptions(options ...Option) *Config {
-	conf := &Config{
+func NewOptions(options ...Option) *Server {
+	conf := &Server{
 		Host:            "127.0.0.1",
 		Port:            80,
 		ExitWaitTimeout: 5,
@@ -83,20 +83,20 @@ func NewOptions(options ...Option) *Config {
 }
 
 func WithName(name string) Option {
-	return func(s *Config) {
+	return func(s *Server) {
 		s.Name = name
 	}
 }
 
 func WithHostPorts(host string, port int) Option {
-	return func(s *Config) {
+	return func(s *Server) {
 		s.Host = host
 		s.Port = port
 	}
 }
 
 func WithTLS(certFile, keyFile string) Option {
-	return func(s *Config) {
+	return func(s *Server) {
 		s.Https = true
 		s.CertFile = certFile
 		s.KeyFile = keyFile
@@ -104,13 +104,13 @@ func WithTLS(certFile, keyFile string) Option {
 }
 
 func WithGraceExitTime(timeout int) Option {
-	return func(s *Config) {
+	return func(s *Server) {
 		s.ExitWaitTimeout = timeout
 	}
 }
 
 func WithTrace(endpoint, exporter string) Option {
-	return func(s *Config) {
+	return func(s *Server) {
 		s.TraceEndpoint = endpoint
 		s.TraceExporter = exporter
 	}

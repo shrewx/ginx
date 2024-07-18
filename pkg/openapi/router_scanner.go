@@ -156,7 +156,6 @@ func (scanner *RouterScanner) OperatorTypeNamesFromArgs(pkg *packagesx.Package, 
 			continue
 		}
 
-		// parse servicex.Group("")
 		if callExpr, ok := arg.(*ast.CallExpr); ok {
 			if selectorExpr, ok := callExpr.Fun.(*ast.SelectorExpr); ok {
 				if containsGinx(pkg.TypesInfo.ObjectOf(selectorExpr.Sel).Type()) {

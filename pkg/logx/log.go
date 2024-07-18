@@ -10,7 +10,7 @@ import (
 
 const (
 	fileField       = "file"
-	logFilePath     = "servicex/pkg/logx/log.go"
+	logFilePath     = "ginx/pkg/logx/log.go"
 	defaultLogLabel = "default"
 )
 

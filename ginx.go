@@ -6,7 +6,7 @@ import (
 	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/ilyakaznacheev/cleanenv"
-	"github.com/shrewx/ginx/pkg/conf/server"
+	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/service_discovery"
 	"github.com/shrewx/ginx/pkg/trace"
 	"github.com/sirupsen/logrus"
@@ -86,9 +86,9 @@ func SetI18n(language string) {
 	}
 }
 
-func RunServer(config *server.Config, r *GinRouter) {
+func RunServer(config *conf.Server, r *GinRouter) {
 	if config == nil {
-		config = server.NewOptions()
+		config = conf.NewOptions()
 	}
 
 	// release mode
@@ -133,7 +133,7 @@ func instance() *Server {
 	return ginx.server
 }
 
-func (s *Server) spin(conf *server.Config) {
+func (s *Server) spin(conf *conf.Server) {
 	errCh := make(chan error)
 	go func() {
 		errCh <- s.run(conf)
@@ -156,7 +156,7 @@ func (s *Server) spin(conf *server.Config) {
 	}
 }
 
-func (s *Server) run(conf *server.Config) (err error) {
+func (s *Server) run(conf *conf.Server) (err error) {
 	if conf.Https && (conf.CertFile == "" || conf.KeyFile == "") {
 		panic("use https but cert file or key file not set")
 	}
@@ -187,7 +187,7 @@ func (s *Server) run(conf *server.Config) (err error) {
 	return err
 }
 
-func (s *Server) watch(conf *server.Config) error {
+func (s *Server) watch(conf *conf.Server) error {
 	if s.watcher != nil {
 		info := service_discovery.ServiceInfo{
 			Name:           conf.Name,
@@ -231,7 +231,7 @@ func waitSignal(errCh chan error) error {
 	return nil
 }
 
-func initTrace(conf *server.Config) *trace.Agent {
+func initTrace(conf *conf.Server) *trace.Agent {
 	agent := trace.NewAgent(conf.Name, conf.TraceEndpoint, conf.TraceExporter)
 	if err := agent.Init(); err != nil {
 		panic(err)
