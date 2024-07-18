@@ -179,7 +179,6 @@ func (scanner *OperatorScanner) scanReturns(ctx context.Context, op *Operator, t
 		method, ok := typesutil.FromTType(typ).MethodByName("Output")
 		if ok {
 			results, n := scanner.pkg.FuncResultsOf(method.(*typesutil.TMethod).Func)
-			fmt.Printf("%s:%+v\n", op.ID, results)
 			if n == 2 {
 				for _, v := range results[0] {
 					if v.Type != nil {
