@@ -2,7 +2,7 @@ package enum
 
 import "errors"
 
-var InvalidTypeError = errors.New("invalid type error")
+var InvalidTypeError = errors.New("invalid enum type error")
 
 type Enum interface {
 	Int() int

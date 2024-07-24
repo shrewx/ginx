@@ -6,6 +6,7 @@ import (
 	"github.com/shrewx/ginx/internal/binding"
 	"github.com/shrewx/ginx/internal/errors"
 	"github.com/shrewx/ginx/internal/middleware"
+	"github.com/shrewx/ginx/pkg/logx"
 	"github.com/shrewx/ginx/pkg/statuserror"
 	"github.com/shrewx/ginx/pkg/trace"
 	"net/http"
@@ -153,6 +154,7 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 		ctx.Set(LangHeader, ctx.GetHeader(LangHeader))
 
 		if err := binding.Validate(ctx, op); err != nil {
+			logx.ErrorWithoutSkip(err)
 			ginErrorWrapper(errors.BadRequest, ctx)
 			return
 		}
@@ -193,6 +195,7 @@ func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
 		op = reflect.New(reflect.ValueOf(op).Elem().Type()).Interface().(Operator)
 		ctx.Set(OperationName, reflect.TypeOf(op).Elem().Name())
 		if err := binding.Validate(ctx, op); err != nil {
+			logx.ErrorWithoutSkip(err)
 			ginErrorWrapper(err, ctx)
 			return
 		}

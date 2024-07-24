@@ -10,7 +10,7 @@ import (
 
 const (
 	fileField       = "file"
-	logFilePath     = "ginx/pkg/logx/log.go"
+	logFilePath     = "ginx/pkg/logx"
 	defaultLogLabel = "default"
 )
 
@@ -132,6 +132,17 @@ func Error(args ...interface{}) {
 			WithSkip(t).Errorln(args[1:])
 		default:
 			WithSkip().Errorln(args...)
+		}
+	}
+}
+
+func ErrorWithoutSkip(args ...interface{}) {
+	if len(args) > 0 {
+		switch t := args[0].(type) {
+		case LogLabel:
+			Label(t).Errorln(args[1:])
+		default:
+			Instance().Errorln(args...)
 		}
 	}
 }
