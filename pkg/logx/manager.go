@@ -25,12 +25,15 @@ func Load(c *conf.Log) {
 
 func load(c *conf.Log) *logrus.Logger {
 	logger := logrus.New()
-	if _, err := os.Stat(c.LogDirPath); os.IsNotExist(err) {
-		err := os.Mkdir(c.LogDirPath, 0755)
-		if err != nil {
-			panic(err)
+	if !c.ToStdout {
+		if _, err := os.Stat(c.LogDirPath); os.IsNotExist(err) {
+			err := os.Mkdir(c.LogDirPath, 0755)
+			if err != nil {
+				panic(err)
+			}
 		}
 	}
+
 	if c.IsJson {
 		logger.SetFormatter(&logrus.JSONFormatter{
 			DisableHTMLEscape: c.DisableHTMLEscape,
@@ -65,7 +68,8 @@ func load(c *conf.Log) *logrus.Logger {
 func Instance() *logrus.Logger {
 	logger := logManager.Load(defaultLogLabel)
 	if logger == nil {
-		logManager.Set(defaultLogLabel, load(defaultConfig()))
+		logger = load(defaultConfig())
+		logManager.Set(defaultLogLabel, logger)
 	}
 	return logger
 }
@@ -82,5 +86,6 @@ func defaultConfig() *conf.Log {
 	return &conf.Log{
 		ToStdout: true,
 		IsJson:   false,
+		LogLevel: "info",
 	}
 }

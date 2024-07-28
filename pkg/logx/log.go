@@ -65,7 +65,7 @@ func setLogLevel(logger *logrus.Logger, level string) {
 	case "panic":
 		logger.SetLevel(logrus.PanicLevel)
 	default:
-		fmt.Println("log lever error, use default info level")
+		fmt.Println("log level error, use default info level")
 		logger.SetLevel(logrus.InfoLevel)
 	}
 }

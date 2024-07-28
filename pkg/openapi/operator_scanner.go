@@ -335,6 +335,9 @@ func (scanner *OperatorScanner) scanParameterOrRequestBody(ctx context.Context, 
 		}
 
 		name, flags := tagValueAndFlagsByTagString(field.Tag().Get("name"))
+		if name == "" {
+			name, flags = tagValueAndFlagsByTagString(field.Tag().Get("json"))
+		}
 
 		schema := scanner.DefinitionScanner.propSchemaByField(
 			ctx,
@@ -422,9 +425,13 @@ func (scanner *OperatorScanner) scanForm(ctx context.Context, op *Operator, t *t
 			name = field.Name()
 		}
 
-		required := true
-		if hasOmitempty, ok := flags["omitempty"]; ok {
-			required = !hasOmitempty
+		required := false
+		validate := tags.Get("validate")
+		value, validateFlags := tagValueAndFlagsByTagString(validate)
+		if value == "required" {
+			required = true
+		} else if _, ok := validateFlags["required"]; ok {
+			required = false
 		}
 
 		structSchema.SetProperty(
