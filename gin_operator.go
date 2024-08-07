@@ -151,7 +151,9 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 		// set operation name
 		ctx.Set(OperationName, reflect.TypeOf(op).Elem().Name())
 		// set lang to ctx so that client can know the lang
-		ctx.Set(LangHeader, ctx.GetHeader(LangHeader))
+		if ctx.GetHeader(LangHeader) == "" {
+			ctx.Header(LangHeader, I18nZH)
+		}
 
 		if err := binding.Validate(ctx, op); err != nil {
 			logx.ErrorWithoutSkip(err)
@@ -217,9 +219,9 @@ func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
 func ginErrorWrapper(err error, ctx *gin.Context) {
 	switch e := err.(type) {
 	case *statuserror.StatusErr:
-		ctx.AbortWithStatusJSON(e.StatusCode(), e.I18n(ginI18n(ctx)))
+		ctx.AbortWithStatusJSON(e.StatusCode(), e.I18n(GetLang(ctx)))
 	case statuserror.CommonError:
-		ctx.AbortWithStatusJSON(statuserror.StatusCodeFromCode(e.Code()), e.I18n(ginI18n(ctx)))
+		ctx.AbortWithStatusJSON(statuserror.StatusCodeFromCode(e.Code()), e.I18n(GetLang(ctx)))
 	default:
 		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &statuserror.StatusErr{
 			Key:       errors.InternalServerError.Key(),
@@ -229,7 +231,7 @@ func ginErrorWrapper(err error, ctx *gin.Context) {
 	}
 }
 
-func ginI18n(ctx *gin.Context) string {
+func GetLang(ctx *gin.Context) string {
 	lang := ginx.i18n
 	if ctx.GetHeader(LangHeader) != "" {
 		switch ctx.GetHeader(LangHeader) {
