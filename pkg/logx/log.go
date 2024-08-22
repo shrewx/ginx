@@ -10,7 +10,6 @@ import (
 
 const (
 	fileField       = "file"
-	logFilePath     = "ginx/pkg/logx"
 	defaultLogLabel = "default"
 )
 
@@ -282,7 +281,8 @@ func fileInfo(skip int) string {
 		if !ok {
 			continue
 		}
-		if strings.Contains(file, logFilePath) {
+		if strings.Contains(file, "shrewx") && strings.Contains(file, "ginx") ||
+			strings.Contains(file, "gin-gonic") {
 			continue
 		}
 		filePath = append(filePath, fmt.Sprintf("%s:%d", filepath.Base(file), tno))

@@ -2,8 +2,8 @@ package middleware
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/shrewx/ginx/pkg/logx"
 	ptrace "github.com/shrewx/ginx/pkg/trace"
-	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
@@ -75,7 +75,7 @@ func Telemetry(agent *ptrace.Agent) gin.HandlerFunc {
 			span.SetAttributes(attribute.String("gin.errors", c.Errors.String()))
 		}
 
-		logrus.Info("cost: ", latency, ", path: ", c.Request.URL.Path, ", trace id: ", span.SpanContext().TraceID(), ", span id: ", span.SpanContext().SpanID(),
+		logx.Info("cost: ", latency, ", path: ", c.Request.URL.Path, ", trace id: ", span.SpanContext().TraceID(), ", span id: ", span.SpanContext().SpanID(),
 			", remote ip: ", c.Request.RemoteAddr, ", operator: ", operationName, ", status: ", c.Writer.Status())
 	}
 }

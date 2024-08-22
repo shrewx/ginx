@@ -3,7 +3,7 @@ package trace
 import (
 	"fmt"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
+	"github.com/shrewx/ginx/pkg/logx"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/jaeger"
@@ -67,7 +67,7 @@ func (a *Agent) Init() error {
 
 	otel.SetTracerProvider(a.TracerProvider)
 	otel.SetTextMapPropagator(a.Propagators)
-	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) { logrus.Errorf("[otel agent] error: %v", err) }))
+	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) { logx.Errorf("[otel agent] error: %v", err) }))
 
 	return nil
 }

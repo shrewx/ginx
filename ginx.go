@@ -7,9 +7,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/ilyakaznacheev/cleanenv"
 	"github.com/shrewx/ginx/pkg/conf"
+	"github.com/shrewx/ginx/pkg/logx"
 	"github.com/shrewx/ginx/pkg/service_discovery"
 	"github.com/shrewx/ginx/pkg/trace"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"net/http"
 	"os"
@@ -148,7 +148,7 @@ func (s *Server) spin(conf *conf.Server) {
 	}
 
 	if err := signalWaiter(errCh); err != nil {
-		logrus.Errorf("receive close signal: error=%s", err.Error())
+		logx.Errorf("receive close signal: error=%s", err.Error())
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(conf.ExitWaitTimeout)*time.Second)
 		defer cancel()
 		s.server.Shutdown(ctx)
