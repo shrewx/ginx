@@ -5,13 +5,13 @@ import (
 )
 
 type Server struct {
-	ID              string `yaml:"id"`
-	Name            string `yaml:"name"`
-	Host            string `yaml:"host"`
-	Port            int    `yaml:"port"`
-	Https           bool   `yaml:"https"`
-	Release         bool   `yaml:"release"`
-	ExitWaitTimeout int    `yaml:"exit_wait_timeout"`
+	ID              string `yaml:"id" env:"SERVER_ID"`
+	Name            string `yaml:"name" env:"SERVER_NAME"`
+	Host            string `yaml:"host" env:"SERVER_HOST"`
+	Port            int    `yaml:"port" env:"SERVER_PORT"`
+	Https           bool   `yaml:"https" env:"SERVER_HTTPS"`
+	Release         bool   `yaml:"release" env:"SERVER_RELEASE"`
+	ExitWaitTimeout int    `yaml:"exit_wait_timeout" env:"SERVER_EXIT_WAIT_TIMEOUT"`
 
 	TLS       `yaml:"tls"`
 	Trace     `yaml:"trace"`
@@ -19,13 +19,13 @@ type Server struct {
 }
 
 type TLS struct {
-	InsecureSkipVerify bool   `yaml:"insecure_skip_verify"`
-	CertFile           string `yaml:"cert_file"`
-	KeyFile            string `yaml:"key_file"`
+	InsecureSkipVerify bool   `yaml:"insecure_skip_verify" env:"SERVER_TLS_INSECURE_SKIP_VERIFY"`
+	CertFile           string `yaml:"cert_file" env:"SERVER_TLS_CERT_FILE"`
+	KeyFile            string `yaml:"key_file" env:"SERVER_TLS_KEY_FILE"`
 
-	MaxVersion   uint16   `yaml:"max_version"`
-	MinVersion   uint16   `yaml:"min_version"`
-	CipherSuites []uint16 `yaml:"cipher_suites"`
+	MaxVersion   uint16   `yaml:"max_version" env:"SERVER_TLS_MAX_VERSION"`
+	MinVersion   uint16   `yaml:"min_version" env:"SERVER_TLS_MIN_VERSION"`
+	CipherSuites []uint16 `yaml:"cipher_suites" env:"SERVER_TLS_CIPHER_SUITES"`
 }
 
 type Trace struct {

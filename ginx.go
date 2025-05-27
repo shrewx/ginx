@@ -41,16 +41,22 @@ type Ginx struct {
 // Parse function is parse the config file
 // support yaml, json, toml, env
 func Parse(conf interface{}) {
-	if confFile == DefaultConfig {
-		pwd, err := os.Getwd()
-		if err != nil {
+	if confFile != "" {
+		if confFile == DefaultConfig {
+			pwd, err := os.Getwd()
+			if err != nil {
+				panic(err)
+			}
+			confFile = filepath.Join(pwd, confFile)
+		}
+
+		if err := cleanenv.ReadConfig(confFile, conf); err != nil {
 			panic(err)
 		}
-		confFile = filepath.Join(pwd, confFile)
-	}
-
-	if err := cleanenv.ReadConfig(confFile, conf); err != nil {
-		panic(err)
+	} else {
+		if err := cleanenv.ReadEnv(conf); err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -69,7 +75,7 @@ func AddCommand(cmds ...*cobra.Command) {
 //	})
 func Launch(run func(cmd *cobra.Command, args []string)) {
 	ginx.Command.Run = run
-	ginx.Command.Flags().StringVarP(&confFile, "config", "f", "config.yml", "define server conf file path")
+	ginx.Command.Flags().StringVarP(&confFile, "config", "f", "", "define server conf file path")
 	if err := ginx.Execute(); err != nil {
 		panic(err)
 	}
