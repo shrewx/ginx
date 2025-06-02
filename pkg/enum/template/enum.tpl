@@ -3,6 +3,7 @@ package {{ .Package }}
 import ({{if eq .BasicType "string"}}{{else}}
     "bytes"{{end}}
 	"database/sql/driver"
+	"fmt"
 
 	"github.com/shrewx/ginx/pkg/enum"
 )
@@ -56,8 +57,15 @@ func (v *{{ .ClassName }}) UnmarshalText(text []byte) error {
 }
 
 func (v *{{ .ClassName }}) Scan(value interface{}) error {
-	*v = {{ .ClassName }}(value.({{ .BasicType }}))
-	return nil
+	switch val := value.(type) {
+    case string:
+    	*v = {{ .ClassName }}(val)
+    case []byte:
+    	*v = {{ .ClassName }}(string(val))
+    default:
+    	return fmt.Errorf("unsupported Scan type for {{ .ClassName }}: %T", value)
+    }
+    return nil
 }
 
 func (v *{{ .ClassName }}) Value() (driver.Value, error) {
