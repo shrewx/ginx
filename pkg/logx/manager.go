@@ -58,6 +58,8 @@ func load(c *conf.Log) *logrus.Logger {
 			Compress:   c.Compress,
 		}
 		logger.SetOutput(l)
+	} else {
+		logger.SetOutput(os.Stdout)
 	}
 
 	setLogLevel(logger, c.LogLevel)
