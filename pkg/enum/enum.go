@@ -1,6 +1,9 @@
 package enum
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 var InvalidTypeError = errors.New("invalid enum type error")
 
@@ -66,4 +69,31 @@ func (o Values) Less(i, j int) bool {
 
 func (o Values) Swap(i, j int) {
 	o[i], o[j] = o[j], o[i]
+}
+
+func ToInt64(i interface{}) (int64, error) {
+	switch v := i.(type) {
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	case int32:
+		return int64(v), nil
+	case int16:
+		return int64(v), nil
+	case int8:
+		return int64(v), nil
+	case uint64:
+		return int64(v), nil
+	case uint:
+		return int64(v), nil
+	case uint32:
+		return int64(v), nil
+	case uint16:
+		return int64(v), nil
+	case uint8:
+		return int64(v), nil
+	default:
+		return 0, fmt.Errorf("unsupported type: %T", i)
+	}
 }
