@@ -64,13 +64,13 @@ func (v {{ .ClassName }}) MarshalJSON() ([]byte, error) {
 }
 
 func (v *{{ .ClassName }}) UnmarshalJSON(data []byte) error {
-    var tmp {{ .ClassName }}
+    var tmp int
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
-    switch tmp {
+    switch {{ .ClassName }}(tmp) {
     case {{ .Keys }}:
-        *v = tmp
+        *v = {{ .ClassName }}(tmp)
     default:
         return enum.InvalidTypeError
     }
