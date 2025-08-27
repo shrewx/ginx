@@ -30,6 +30,7 @@ const (
 	MineAudioMpeg              = "audio/mpeg"
 	MineAudioOgg               = "audio/ogg"
 	MineAudioWave              = "audio/wav"
+	MineAudioWebm              = "audio/webm"
 	MineImageBmp               = "image/bmp"
 	MineImageGif               = "image/gif"
 	MineImageJpeg              = "image/jpeg"

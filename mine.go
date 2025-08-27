@@ -2,10 +2,12 @@ package ginx
 
 import (
 	"bytes"
+
 	"github.com/shrewx/stringx"
 
-	"github.com/gin-gonic/gin"
 	"net/url"
+
+	"github.com/gin-gonic/gin"
 )
 
 type Attachment struct {
@@ -115,7 +117,7 @@ type AudioWebm struct {
 }
 
 func (a *AudioWebm) ContentType() string {
-	return MineAudioWave
+	return MineAudioWebm
 }
 
 func (a *AudioWebm) Bytes() []byte { return a.Buffer.Bytes() }

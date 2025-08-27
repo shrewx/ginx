@@ -9,8 +9,6 @@ package binding
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/shrewx/stringx"
-	"reflect"
 )
 
 // Content-Type MIME of the most common data formats.
@@ -100,33 +98,4 @@ func binding(in, contentType string) Binding {
 	default: // case MIMEPOSTForm:
 		return Form
 	}
-}
-
-func Validate(ctx *gin.Context, router interface{}) error {
-	var err error
-	rt := reflect.TypeOf(router).Elem()
-	tagMap := make(map[string]bool, 0)
-	for i := 0; i < rt.NumField(); i++ {
-		field := rt.Field(i)
-		if in, ok := field.Tag.Lookup("in"); ok {
-			if in == BODY {
-				tag := stringx.FirstLower(field.Name)
-				if v, ok := field.Tag.Lookup("json"); ok {
-					tag = v
-				}
-				ctx.Set("tag", tag)
-			}
-			if !tagMap[in] || in == MULTIPART || in == FORM {
-				bind := binding(in, ctx.ContentType())
-				err = bind.Bind(ctx, router)
-				tagMap[in] = true
-			}
-		}
-
-		if err != nil {
-			return err
-		}
-	}
-
-	return Validator.ValidateStruct(router)
 }

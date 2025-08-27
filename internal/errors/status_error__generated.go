@@ -2,7 +2,7 @@
 package errors
 
 import (
-    "fmt"
+	"fmt"
 	"github.com/shrewx/ginx/pkg/statuserror"
 	"strconv"
 	"strings"
@@ -11,7 +11,7 @@ import (
 func (v StatusError) StatusErr(args ...interface{}) statuserror.CommonError {
 	return &statuserror.StatusErr{
 		Key:       v.Key(),
-		ErrorCode:      v.Code(),
+		ErrorCode: v.Code(),
 		Message:   fmt.Sprintf(v.ZhMessage(), args...),
 		ZHMessage: fmt.Sprintf(v.ZhMessage(), args...),
 		ENMessage: fmt.Sprintf(v.EnMessage(), args...),
@@ -36,7 +36,6 @@ func (v StatusError) I18n(language string) statuserror.CommonError {
 	return e
 }
 
-
 func (v StatusError) StatusCode() int {
 	strCode := fmt.Sprintf("%d", v.Code())
 	if len(strCode) < 3 {
@@ -47,7 +46,7 @@ func (v StatusError) StatusCode() int {
 }
 
 func (v StatusError) Key() string {
-	switch v { 
+	switch v {
 	case BadRequest:
 		return "BadRequest"
 	case Unauthorized:
@@ -73,7 +72,7 @@ func (v StatusError) Error() string {
 }
 
 func (v StatusError) ZhMessage() string {
-	switch v { 
+	switch v {
 	case BadRequest:
 		return "请求参数错误"
 	case Unauthorized:
@@ -91,7 +90,7 @@ func (v StatusError) ZhMessage() string {
 }
 
 func (v StatusError) EnMessage() string {
-	switch v { 
+	switch v {
 	case BadRequest:
 		return ""
 	case Unauthorized:

@@ -66,7 +66,7 @@ func (v *StatusErr) StatusErr(args ...interface{}) CommonError {
 }
 
 func (v *StatusErr) Error() string {
-	return fmt.Sprintf("[%s][%d] %s", v.Key, v.Code, v.Message)
+	return fmt.Sprintf("[%s][%d] %s", v.Key, v.Code(), v.Message)
 }
 
 func StatusCodeFromCode(code int) int {

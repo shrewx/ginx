@@ -25,8 +25,8 @@ func (e *HTTPBasicAuthSecurityType) Type() string {
 	return BasicAuth
 }
 
-type HTTPBearJWTSecurityType struct{}
+type HTTPBearerJWTSecurityType struct{}
 
-func (e *HTTPBearJWTSecurityType) Type() string {
+func (e *HTTPBearerJWTSecurityType) Type() string {
 	return BearerJWT
 }

@@ -4,13 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"github.com/gin-gonic/gin"
-	"github.com/ilyakaznacheev/cleanenv"
-	"github.com/shrewx/ginx/pkg/conf"
-	"github.com/shrewx/ginx/pkg/logx"
-	"github.com/shrewx/ginx/pkg/service_discovery"
-	"github.com/shrewx/ginx/pkg/trace"
-	"github.com/spf13/cobra"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,6 +12,14 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/ilyakaznacheev/cleanenv"
+	"github.com/shrewx/ginx/pkg/conf"
+	"github.com/shrewx/ginx/pkg/logx"
+	"github.com/shrewx/ginx/pkg/service_discovery"
+	"github.com/shrewx/ginx/pkg/trace"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -163,7 +164,7 @@ func (s *Server) spin(conf *conf.Server) {
 }
 
 func (s *Server) run(conf *conf.Server) (err error) {
-	if conf.Https && (conf.CertFile == "" || conf.KeyFile == "") {
+	if conf.Https && (conf.TLS.CertFile == "" || conf.TLS.KeyFile == "") {
 		panic("use https but cert file or key file not set")
 	}
 	addr := conf.Host + ":" + strconv.Itoa(conf.Port)
@@ -176,12 +177,12 @@ func (s *Server) run(conf *conf.Server) (err error) {
 
 	if conf.Https {
 		s.server.TLSConfig = &tls.Config{
-			InsecureSkipVerify: conf.InsecureSkipVerify,
-			MaxVersion:         conf.MaxVersion,
-			MinVersion:         conf.MinVersion,
-			CipherSuites:       conf.CipherSuites,
+			InsecureSkipVerify: conf.TLS.InsecureSkipVerify,
+			MaxVersion:         conf.TLS.MaxVersion,
+			MinVersion:         conf.TLS.MinVersion,
+			CipherSuites:       conf.TLS.CipherSuites,
 		}
-		err = s.server.ListenAndServeTLS(conf.CertFile, conf.KeyFile)
+		err = s.server.ListenAndServeTLS(conf.TLS.CertFile, conf.TLS.KeyFile)
 	} else {
 		err = s.server.ListenAndServe()
 	}
@@ -197,14 +198,14 @@ func (s *Server) watch(conf *conf.Server) error {
 	if s.watcher != nil {
 		info := service_discovery.ServiceInfo{
 			Name:           conf.Name,
-			Address:        conf.Address,
+			Address:        conf.Discovery.Address,
 			Port:           conf.Port,
-			Tags:           conf.Tags,
+			Tags:           conf.Discovery.Tags,
 			ID:             conf.ID,
-			HealthPath:     conf.HeathPath,
-			Timeout:        conf.Timeout,
-			Interval:       conf.Interval,
-			DeregisterTime: conf.DeregisterTime,
+			HealthPath:     conf.Discovery.HeathPath,
+			Timeout:        conf.Discovery.Timeout,
+			Interval:       conf.Discovery.Interval,
+			DeregisterTime: conf.Discovery.DeregisterTime,
 		}
 		info.Default()
 		if err := s.watcher.Watch(info); err != nil {
