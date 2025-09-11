@@ -3,10 +3,10 @@ package statuserror
 import (
 	"fmt"
 	"github.com/go-courier/packagesx"
+	"github.com/shrewx/ginx/pkg/utils"
 	"github.com/shrewx/stringx"
 	"go/types"
 	"golang.org/x/tools/go/packages"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 )
@@ -60,15 +60,26 @@ func (g *StatusErrorGenerator) Output(pwd string) {
 		pkgDir, packageName := getPkgDirAndPackage(statusErr.TypeName.Pkg().Path())
 		dir, _ := filepath.Rel(pwd, pkgDir)
 		filename := stringx.Camel2Case(name) + "__generated.go"
-		buff, err := stringx.ParseTextTemplate("error", StatusErrorTemplate, map[string]interface{}{
+
+		var messages = make(map[string][]*StatusErr)
+		for _, e := range statusErr.Errors {
+			for k, message := range e.Messages {
+				messages[k] = append(messages[k], &StatusErr{
+					Key:     e.Key,
+					Message: message,
+				})
+			}
+		}
+		buff, err := utils.ParseTemplate("error", StatusErrorTemplate, map[string]interface{}{
 			"Package":   packageName,
 			"ClassName": name,
 			"Errors":    statusErr.Errors,
+			"Messages":  messages,
 		})
 		if err != nil {
 			panic(err)
 		}
-		err = ioutil.WriteFile(filepath.Join(dir, filename), buff.Bytes(), os.ModePerm)
+		err = os.WriteFile(filepath.Join(dir, filename), buff.Bytes(), os.ModePerm)
 		if err != nil {
 			panic(err)
 		}

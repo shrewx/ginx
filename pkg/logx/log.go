@@ -33,10 +33,9 @@ func (m *LogManager) Load(label LogLabel) *logrus.Logger {
 
 func (m *LogManager) Set(label LogLabel, logger *logrus.Logger) {
 	label = LogLabel(strings.ToLower(string(label)))
-	if _, ok := m.logs[label]; ok {
-		panic(fmt.Sprintf("%s log label is used, change other label", label))
+	if _, ok := m.logs[label]; !ok {
+		m.logs[label] = logger
 	}
-	m.logs[label] = logger
 }
 
 func SetLogLevel(logLevel string, labels ...LogLabel) {

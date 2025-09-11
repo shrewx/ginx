@@ -233,9 +233,8 @@ func Wrap(err error, code int, key string, msgAndDesc ...string) *statuserror.St
 
 	s := &statuserror.StatusErr{
 		Key:       key,
-		ErrorCode: code,
-		ZHMessage: desc,
-		ENMessage: desc,
+		ErrorCode: int64(code),
+		Messages:  map[string]string{"zh": desc},
 	}
 
 	return s
@@ -252,8 +251,8 @@ func ParseStatusErrSummary(s string) (*statuserror.StatusErr, error) {
 
 	return &statuserror.StatusErr{
 		Key:       matched[1],
-		ErrorCode: int(code),
-		ZHMessage: matched[3],
+		ErrorCode: code,
+		Messages:  map[string]string{"zh": matched[3]},
 	}, nil
 }
 

@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
@@ -46,7 +45,7 @@ func Swagger() *cobra.Command {
 			if err != nil {
 				panic(err)
 			}
-			list, err := cli.ContainerList(context.Background(), types.ContainerListOptions{
+			list, err := cli.ContainerList(context.Background(), container.ListOptions{
 				All:     true,
 				Filters: filters.NewArgs(filters.Arg("name", "ginx-swagger-openapi")),
 			})
@@ -55,7 +54,7 @@ func Swagger() *cobra.Command {
 			}
 
 			if len(list) > 0 {
-				err = cli.ContainerRemove(context.Background(), list[0].ID, types.ContainerRemoveOptions{
+				err = cli.ContainerRemove(context.Background(), list[0].ID, container.RemoveOptions{
 					RemoveVolumes: true,
 					Force:         true,
 				})
@@ -79,7 +78,7 @@ func Swagger() *cobra.Command {
 			if err != nil {
 				panic(err)
 			}
-			err = cli.ContainerStart(context.Background(), resp.ID, types.ContainerStartOptions{})
+			err = cli.ContainerStart(context.Background(), resp.ID, container.StartOptions{})
 			if err != nil {
 				panic(err)
 			}

@@ -2,51 +2,37 @@
 package errors
 
 import (
-	"fmt"
+	"github.com/shrewx/ginx/pkg/i18nx"
 	"github.com/shrewx/ginx/pkg/statuserror"
-	"strconv"
-	"strings"
+	"github.com/nicksnyder/go-i18n/v2/i18n"
 )
 
-func (v StatusError) StatusErr(args ...interface{}) statuserror.CommonError {
-	return &statuserror.StatusErr{
-		Key:       v.Key(),
-		ErrorCode: v.Code(),
-		Message:   fmt.Sprintf(v.ZhMessage(), args...),
-		ZHMessage: fmt.Sprintf(v.ZhMessage(), args...),
-		ENMessage: fmt.Sprintf(v.EnMessage(), args...),
-	}
+func init() {
+	i18nx.RegisterHooks(RegisterErrorMessages)
 }
 
-func (v StatusError) I18n(language string) statuserror.CommonError {
-	e := &statuserror.StatusErr{
-		Key:       v.Key(),
-		ErrorCode: v.Code(),
-		ZHMessage: v.ZhMessage(),
-		ENMessage: v.EnMessage(),
-	}
-	language = strings.ToLower(language)
-	switch language {
-	case "zh":
-		e.Message = v.ZhMessage()
-	case "en":
-		e.Message = v.EnMessage()
-	}
+func (v StatusError) WithArgs(args ...interface{}) statuserror.CommonError {
+	return statuserror.NewStatusErr(v.Key(), v.Code()).WithArgs(args)
+}
 
-	return e
+func (v StatusError) Localize(manager *i18nx.Localize, lang string) i18nx.I18nMessage {
+	return statuserror.NewStatusErr(v.Key(), v.Code()).Localize(manager, lang)
+}
+
+func (v StatusError) LocalizeValue(value interface{}) statuserror.CommonError {
+	return statuserror.NewStatusErr(v.Key(), v.Code()).WithParams(map[string]interface{}{"Value": value})
+}
+
+func (v StatusError) LocalizeData(data map[string]interface{}) statuserror.CommonError {
+	return statuserror.NewStatusErr(v.Key(), v.Code()).WithParams(data)
 }
 
 func (v StatusError) StatusCode() int {
-	strCode := fmt.Sprintf("%d", v.Code())
-	if len(strCode) < 3 {
-		return 400
-	}
-	statusCode, _ := strconv.Atoi(strCode[:3])
-	return statusCode
+	return statuserror.NewStatusErr(v.Key(), v.Code()).StatusCode()
 }
 
 func (v StatusError) Key() string {
-	switch v {
+	switch v { 
 	case BadRequest:
 		return "BadRequest"
 	case Unauthorized:
@@ -63,46 +49,34 @@ func (v StatusError) Key() string {
 	return "UNKNOWN"
 }
 
-func (v StatusError) Code() int {
-	return int(v)
+func (v StatusError) Code() int64 {
+	return int64(v)
 }
 
 func (v StatusError) Error() string {
-	return fmt.Sprintf("[%s][%d] zh:(%s), en:(%s)", v.Key(), v.StatusCode(), v.ZhMessage(), v.EnMessage())
+	return statuserror.NewStatusErr(v.Key(), v.Code()).Error()
 }
 
-func (v StatusError) ZhMessage() string {
-	switch v {
-	case BadRequest:
-		return "请求参数错误"
-	case Unauthorized:
-		return "未授权，请先授权"
-	case Forbidden:
-		return "禁止操作"
-	case NotFound:
-		return "资源未找到"
-	case Conflict:
-		return "资源冲突"
-	case InternalServerError:
-		return "内部处理错误"
-	}
-	return ""
+func (v StatusError) Value() string {
+	return statuserror.NewStatusErr(v.Key(), v.Code()).Value()
 }
 
-func (v StatusError) EnMessage() string {
-	switch v {
-	case BadRequest:
-		return ""
-	case Unauthorized:
-		return ""
-	case Forbidden:
-		return ""
-	case NotFound:
-		return ""
-	case Conflict:
-		return ""
-	case InternalServerError:
-		return ""
-	}
-	return ""
+func (v StatusError) WithField(key string, value string) statuserror.CommonError {
+	return statuserror.NewStatusErr(v.Key(), v.Code()).WithField(key, value)
+}
+
+func GetStatusErrorZHMessages() []*i18n.Message {
+	var messages []*i18n.Message
+
+	messages = append(messages, &i18n.Message{ID: BadRequest.Key(), Other: "请求参数错误"})
+	messages = append(messages, &i18n.Message{ID: Unauthorized.Key(), Other: "未授权，请先授权"})
+	messages = append(messages, &i18n.Message{ID: Forbidden.Key(), Other: "禁止操作"})
+	messages = append(messages, &i18n.Message{ID: NotFound.Key(), Other: "资源未找到"})
+	messages = append(messages, &i18n.Message{ID: Conflict.Key(), Other: "资源冲突"})
+	messages = append(messages, &i18n.Message{ID: InternalServerError.Key(), Other: "内部处理错误"})
+	return messages
+}
+
+func RegisterErrorMessages() { 
+	i18nx.AddMessages("zh", GetStatusErrorZHMessages())  
 }

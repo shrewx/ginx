@@ -194,7 +194,7 @@ func TestSetI18n(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.language, func(t *testing.T) {
 			SetI18n(tt.language)
-			assert.Equal(t, tt.expected, ginx.i18n)
+			assert.Equal(t, tt.expected, ginx.i18nLang)
 		})
 	}
 }

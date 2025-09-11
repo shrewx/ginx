@@ -36,7 +36,10 @@ type OperatorTypeInfo struct {
 // NewInstance 从对象池获取或创建新实例
 func (info *OperatorTypeInfo) NewInstance() interface{} {
 	if instance := info.Pool.Get(); instance != nil {
-		return instance
+		// 验证类型是否正确
+		if reflect.TypeOf(instance).Elem() == info.ElemType {
+			return instance
+		}
 	}
 	return reflect.New(info.ElemType).Interface()
 }
@@ -54,9 +57,19 @@ func (info *OperatorTypeInfo) PutInstance(instance interface{}) {
 func resetOperatorInstance(instance interface{}, info *OperatorTypeInfo) {
 	v := reflect.ValueOf(instance).Elem()
 
+	// 添加边界检查
+	if v.NumField() == 0 {
+		return
+	}
+
 	// 重置所有字段为零值，确保实例状态清洁
 	// 只重置可设置的字段，避免对不可导出字段的操作
 	for _, field := range info.Fields {
+		// 检查索引是否有效
+		if field.Index >= v.NumField() {
+			continue
+		}
+
 		fieldValue := v.Field(field.Index)
 		if fieldValue.CanSet() {
 			fieldValue.Set(reflect.Zero(field.Type))

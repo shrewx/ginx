@@ -105,7 +105,7 @@ func (f *Client) newRequestWithContext(ctx context.Context, method string, rawUr
 	if ok {
 		header.Add(LangHeader, lang)
 	} else {
-		header.Add(LangHeader, ginx.i18n)
+		header.Add(LangHeader, ginx.i18nLang)
 	}
 
 	// 处理空请求体的情况
@@ -199,9 +199,11 @@ func (f *Client) newRequestWithContext(ctx context.Context, method string, rawUr
 	// 关闭multipart写入器（关键！否则内容长度会不匹配导致panic）
 	if closeWriter {
 		//  necessary !!!!  otherwise the length of the content is shorter than the length of the body !!!! panic
-		err := writer.Close()
-		if err != nil {
-			return nil, err
+		if writer != nil {
+			err := writer.Close()
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 

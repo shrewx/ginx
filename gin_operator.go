@@ -10,7 +10,6 @@ import (
 	"github.com/shrewx/ginx/internal/errors"
 	"github.com/shrewx/ginx/internal/middleware"
 	"github.com/shrewx/ginx/pkg/logx"
-	"github.com/shrewx/ginx/pkg/statuserror"
 	"github.com/shrewx/ginx/pkg/trace"
 )
 
@@ -288,31 +287,10 @@ func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
 	}
 }
 
-func ginErrorWrapper(err error, ctx *gin.Context) {
-	switch e := err.(type) {
-	case *statuserror.StatusErr:
-		ctx.AbortWithStatusJSON(e.StatusCode(), e.I18n(GetLang(ctx)))
-	case statuserror.CommonError:
-		ctx.AbortWithStatusJSON(statuserror.StatusCodeFromCode(e.Code()), e.I18n(GetLang(ctx)))
-	default:
-		ctx.AbortWithStatusJSON(http.StatusInternalServerError, &statuserror.StatusErr{
-			Key:       errors.InternalServerError.Key(),
-			ErrorCode: http.StatusInternalServerError,
-			Message:   e.Error(),
-		})
-	}
-}
-
 func GetLang(ctx *gin.Context) string {
-	lang := ginx.i18n
+	lang := ginx.i18nLang
 	if ctx.GetHeader(LangHeader) != "" {
-		switch ctx.GetHeader(LangHeader) {
-		case I18nEN:
-			lang = I18nEN
-		case I18nZH:
-			lang = I18nZH
-		default:
-		}
+		lang = strings.ToLower(ctx.GetHeader(LangHeader))
 	}
 	return lang
 }

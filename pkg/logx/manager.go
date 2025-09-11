@@ -25,14 +25,6 @@ func Load(c *conf.Log) {
 
 func load(c *conf.Log) *logrus.Logger {
 	logger := logrus.New()
-	if !c.ToStdout {
-		if _, err := os.Stat(c.LogDirPath); os.IsNotExist(err) {
-			err := os.Mkdir(c.LogDirPath, 0755)
-			if err != nil {
-				panic(err)
-			}
-		}
-	}
 
 	if c.IsJson {
 		logger.SetFormatter(&logrus.JSONFormatter{
@@ -51,6 +43,13 @@ func load(c *conf.Log) *logrus.Logger {
 	}
 
 	if !c.ToStdout {
+		if _, err := os.Stat(c.LogDirPath); os.IsNotExist(err) {
+			err := os.Mkdir(c.LogDirPath, 0755)
+			if err != nil {
+				panic(err)
+			}
+		}
+
 		l := &lumberjack.Logger{
 			Filename:   path.Join(c.LogDirPath, c.LogFileName),
 			MaxSize:    c.MaxSize,

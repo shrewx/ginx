@@ -1,6 +1,8 @@
 module github.com/shrewx/ginx
 
-go 1.18
+go 1.23.0
+
+toolchain go1.24.3
 
 require (
 	github.com/fatih/color v1.13.0
@@ -15,6 +17,7 @@ require (
 	github.com/ilyakaznacheev/cleanenv v1.3.0
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/natefinch/lumberjack v2.0.0+incompatible
+	github.com/nicksnyder/go-i18n/v2 v2.6.0
 	github.com/pelletier/go-toml/v2 v2.0.1
 	github.com/pkg/errors v0.9.1
 	github.com/shrewx/stringx v0.0.0-20220813065501-1b4a4077d113
@@ -40,11 +43,11 @@ require (
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	golang.org/x/sync v0.7.0 // indirect
+	golang.org/x/sync v0.12.0 // indirect
 )
 
 require (
-	github.com/BurntSushi/toml v1.2.0 // indirect
+	github.com/BurntSushi/toml v1.5.0
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/armon/go-metrics v0.3.10 // indirect
 	github.com/docker/distribution v2.8.1+incompatible // indirect
@@ -85,7 +88,7 @@ require (
 	go.opentelemetry.io/otel/metric v0.31.0 // indirect
 	golang.org/x/crypto v0.24.0 // indirect
 	golang.org/x/sys v0.21.0 // indirect
-	golang.org/x/text v0.16.0 // indirect
+	golang.org/x/text v0.23.0
 	golang.org/x/time v0.0.0-20220722155302-e5dcc9cfc0b9 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

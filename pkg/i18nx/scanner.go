@@ -1,4 +1,4 @@
-package statuserror
+package i18nx
 
 import (
 	"fmt"
@@ -12,31 +12,31 @@ import (
 	"github.com/go-courier/packagesx"
 )
 
-func NewStatusErrorScanner(pkg *packagesx.Package) *StatusErrorScanner {
-	return &StatusErrorScanner{
+func NewI18nScanner(pkg *packagesx.Package) *I18nScanner {
+	return &I18nScanner{
 		pkg: pkg,
 	}
 }
 
-type StatusErrorScanner struct {
-	pkg          *packagesx.Package
-	StatusErrors map[*types.TypeName][]*StatusErr
+type I18nScanner struct {
+	pkg      *packagesx.Package
+	Messages map[*types.TypeName][]*Message
 }
 
-func sortedStatusErrList(list []*StatusErr) []*StatusErr {
+func sortedMessageList(list []*Message) []*Message {
 	sort.Slice(list, func(i, j int) bool {
-		return list[i].Code() < list[j].Code()
+		return list[i].Code < list[j].Code
 	})
 	return list
 }
 
-func (scanner *StatusErrorScanner) StatusError(typeName *types.TypeName) []*StatusErr {
+func (scanner *I18nScanner) LoadMessages(typeName *types.TypeName) []*Message {
 	if typeName == nil {
 		return nil
 	}
 
-	if statusErrs, ok := scanner.StatusErrors[typeName]; ok {
-		return sortedStatusErrList(statusErrs)
+	if statusErrs, ok := scanner.Messages[typeName]; ok {
+		return sortedMessageList(statusErrs)
 	}
 
 	if !strings.Contains(typeName.Type().Underlying().String(), "int") {
@@ -62,21 +62,21 @@ func (scanner *StatusErrorScanner) StatusError(typeName *types.TypeName) []*Stat
 
 		messages := ParseMessage(ident.Obj.Decl.(*ast.ValueSpec).Doc.Text())
 
-		scanner.addStatusError(typeName, key, code, messages)
+		scanner.addMessage(typeName, key, code, messages)
 	}
 
-	return sortedStatusErrList(scanner.StatusErrors[typeName])
+	return sortedMessageList(scanner.Messages[typeName])
 }
 
 func ParseMessage(s string) map[string]string {
 	lines := strings.Split(strings.TrimSpace(s), "\n")
 	var messages = make(map[string]string)
 	for _, line := range lines {
-		prefix := "@err"
+		prefix := "@i18n"
 		if strings.HasPrefix(line, prefix) {
 			fields := strings.SplitN(line, " ", 2)
 			key := fields[0]
-			lang := key[4:]
+			lang := key[5:]
 			t, err := language.Parse(lang)
 			if err != nil {
 				continue
@@ -89,19 +89,19 @@ func ParseMessage(s string) map[string]string {
 	return messages
 }
 
-func (scanner *StatusErrorScanner) addStatusError(
+func (scanner *I18nScanner) addMessage(
 	typeName *types.TypeName,
 	key string, code int64, messages map[string]string,
 ) {
-	if scanner.StatusErrors == nil {
-		scanner.StatusErrors = map[*types.TypeName][]*StatusErr{}
+	if scanner.Messages == nil {
+		scanner.Messages = map[*types.TypeName][]*Message{}
 	}
 
-	statusErr := &StatusErr{
-		Key:       key,
-		ErrorCode: code,
-		Messages:  messages,
+	statusErr := &Message{
+		Key:   key,
+		Code:  code,
+		Langs: messages,
 	}
 
-	scanner.StatusErrors[typeName] = append(scanner.StatusErrors[typeName], statusErr)
+	scanner.Messages[typeName] = append(scanner.Messages[typeName], statusErr)
 }

@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/shrewx/ginx/pkg/i18nx"
+
 	"github.com/gin-gonic/gin"
 	"github.com/ilyakaznacheev/cleanenv"
 	"github.com/shrewx/ginx/pkg/conf"
@@ -26,17 +28,17 @@ var (
 	confFile string
 
 	ginx = &Ginx{
-		Command: &cobra.Command{},
-		i18n:    I18nZH,
-		once:    sync.Once{},
+		Command:  &cobra.Command{},
+		i18nLang: I18nZH,
+		once:     sync.Once{},
 	}
 )
 
 type Ginx struct {
 	*cobra.Command
-	i18n   string
-	server *Server
-	once   sync.Once
+	i18nLang string
+	server   *Server
+	once     sync.Once
 }
 
 // Parse function is parse the config file
@@ -87,9 +89,9 @@ func Launch(run func(cmd *cobra.Command, args []string)) {
 func SetI18n(language string) {
 	switch language {
 	case I18nEN:
-		ginx.i18n = I18nEN
+		ginx.i18nLang = I18nEN
 	default:
-		ginx.i18n = I18nZH
+		ginx.i18nLang = I18nZH
 	}
 }
 
@@ -102,6 +104,19 @@ func RunServer(config *conf.Server, r *GinRouter) {
 	if config.Release {
 		gin.SetMode(gin.ReleaseMode)
 	}
+	// init log
+	if config.Log == nil {
+		config.Log = &conf.Log{
+			ToStdout: true,
+		}
+	}
+	logx.Load(config.Log)
+
+	// init i18n
+	if config.I18N == nil {
+		config.I18N = &conf.I18N{}
+	}
+	i18nx.Load(config.I18N)
 
 	// trace agent
 	agent := initTrace(config)

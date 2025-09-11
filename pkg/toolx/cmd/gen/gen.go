@@ -12,4 +12,5 @@ func init() {
 	CmdGen.AddCommand(openapiCommand())
 	CmdGen.AddCommand(clientCommand())
 	CmdGen.AddCommand(enumCommand())
+	CmdGen.AddCommand(i18nCommand())
 }

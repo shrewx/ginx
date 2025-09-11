@@ -515,7 +515,7 @@ func (operator *Operator) BindOperation(method string, operation *oas.Operation,
 			if statusError.StatusCode() < 400 {
 				code = 500
 			}
-			if resp, ok := operation.Responses.Responses[code]; ok {
+			if resp, ok := operation.Responses.Responses[int(code)]; ok {
 				if resp.Extensions != nil {
 					if v, ok := resp.Extensions[XStatusErrs]; ok {
 						if list, ok := v.([]string); ok {
@@ -552,7 +552,7 @@ func (operator *Operator) BindOperation(method string, operation *oas.Operation,
 		if statusError.StatusCode() < 400 {
 			code = 500
 		}
-		operation.AddResponse(code, resp)
+		operation.AddResponse(int(code), resp)
 	}
 
 	if last {
