@@ -54,7 +54,7 @@ func getPkgDirAndPackage(importPath string) (string, string) {
 	return filepath.Dir(pkgs[0].GoFiles[0]), pkgs[0].Name
 }
 
-func (g *I18nMessageGenerator) Output(pwd string) {
+func (g *I18nMessageGenerator) Output(pwd, prefix string) {
 	for name, i18n := range g.messages {
 		pkgDir, packageName := getPkgDirAndPackage(i18n.TypeName.Pkg().Path())
 		dir, _ := filepath.Rel(pwd, pkgDir)
@@ -64,7 +64,8 @@ func (g *I18nMessageGenerator) Output(pwd string) {
 		for _, m := range i18n.Messages {
 			for k, v := range m.Langs {
 				messages[k] = append(messages[k], &Message{
-					Key:     m.Key,
+					T:       m.T,
+					K:       m.Key(),
 					Message: v,
 				})
 			}
@@ -75,6 +76,7 @@ func (g *I18nMessageGenerator) Output(pwd string) {
 			"ClassName": name,
 			"Keys":      i18n.Messages,
 			"Messages":  messages,
+			"Prefix":    prefix,
 		})
 		if err != nil {
 			panic(err)

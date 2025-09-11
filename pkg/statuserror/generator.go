@@ -55,7 +55,7 @@ func getPkgDirAndPackage(importPath string) (string, string) {
 	return filepath.Dir(pkgs[0].GoFiles[0]), pkgs[0].Name
 }
 
-func (g *StatusErrorGenerator) Output(pwd string) {
+func (g *StatusErrorGenerator) Output(pwd, prefix string) {
 	for name, statusErr := range g.statusErrors {
 		pkgDir, packageName := getPkgDirAndPackage(statusErr.TypeName.Pkg().Path())
 		dir, _ := filepath.Rel(pwd, pkgDir)
@@ -65,7 +65,7 @@ func (g *StatusErrorGenerator) Output(pwd string) {
 		for _, e := range statusErr.Errors {
 			for k, message := range e.Messages {
 				messages[k] = append(messages[k], &StatusErr{
-					Key:     e.Key,
+					K:       e.K,
 					Message: message,
 				})
 			}
@@ -75,6 +75,7 @@ func (g *StatusErrorGenerator) Output(pwd string) {
 			"ClassName": name,
 			"Errors":    statusErr.Errors,
 			"Messages":  messages,
+			"Prefix":    prefix,
 		})
 		if err != nil {
 			panic(err)

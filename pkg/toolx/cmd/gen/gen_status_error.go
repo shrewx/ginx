@@ -19,8 +19,12 @@ func statusErrorCommand() *cobra.Command {
 			}
 
 			g := statuserror.NewStatusErrorGenerator(pkg)
-			g.Scan(args...)
-			g.Output(pwd)
+			var prefix string
+			if args[0] == "prefix" {
+				prefix = args[1]
+			}
+			g.Scan(args[2:]...)
+			g.Output(pwd, prefix)
 		},
 	}
 }

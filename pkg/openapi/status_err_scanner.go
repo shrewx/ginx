@@ -142,7 +142,7 @@ func (scanner *StatusErrScanner) mayAddStateErrorByObject(typeFunc *types.Func, 
 		if named, ok := typeConst.Type().(*types.Named); ok {
 			if errs, ok := scanner.statusErrorTypes[named]; ok {
 				for i := range errs {
-					if errs[i].Key == typeConst.Name() {
+					if errs[i].K == typeConst.Name() {
 						scanner.appendStateErrs(typeFunc, errs[i])
 					}
 				}
@@ -157,7 +157,7 @@ func (scanner *StatusErrScanner) appendStateErrs(typeFunc *types.Func, statusErr
 	errs := append(scanner.errorsUsed[typeFunc], statusErrs...)
 	for i := range errs {
 		s := errs[i]
-		m[fmt.Sprintf("%s%d", s.Key, s.Code())] = s
+		m[fmt.Sprintf("%s%d", s.K, s.Code())] = s
 	}
 
 	next := make([]*statuserror.StatusErr, 0)
@@ -232,7 +232,7 @@ func Wrap(err error, code int, key string, msgAndDesc ...string) *statuserror.St
 	}
 
 	s := &statuserror.StatusErr{
-		Key:       key,
+		K:         key,
 		ErrorCode: int64(code),
 		Messages:  map[string]string{"zh": desc},
 	}
@@ -250,7 +250,7 @@ func ParseStatusErrSummary(s string) (*statuserror.StatusErr, error) {
 	code, _ := strconv.ParseInt(matched[2], 10, 64)
 
 	return &statuserror.StatusErr{
-		Key:       matched[1],
+		K:         matched[1],
 		ErrorCode: code,
 		Messages:  map[string]string{"zh": matched[3]},
 	}, nil

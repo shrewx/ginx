@@ -6,7 +6,6 @@ import (
 	"go/types"
 	"golang.org/x/text/language"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/go-courier/packagesx"
@@ -25,7 +24,7 @@ type I18nScanner struct {
 
 func sortedMessageList(list []*Message) []*Message {
 	sort.Slice(list, func(i, j int) bool {
-		return list[i].Code < list[j].Code
+		return list[i].K < list[j].K
 	})
 	return list
 }
@@ -39,8 +38,8 @@ func (scanner *I18nScanner) LoadMessages(typeName *types.TypeName) []*Message {
 		return sortedMessageList(statusErrs)
 	}
 
-	if !strings.Contains(typeName.Type().Underlying().String(), "int") {
-		panic(fmt.Errorf("status error type underlying must be an int or uint, but got %s", typeName.String()))
+	if !strings.Contains(typeName.Type().Underlying().String(), "string") {
+		panic(fmt.Errorf("status error type underlying must be string, but got %s", typeName.String()))
 	}
 
 	pkgInfo := scanner.pkg.Pkg(typeName.Pkg().Path())
@@ -57,12 +56,9 @@ func (scanner *I18nScanner) LoadMessages(typeName *types.TypeName) []*Message {
 			continue
 		}
 
-		key := typeConst.Name()
-		code, _ := strconv.ParseInt(typeConst.Val().String(), 10, 64)
-
 		messages := ParseMessage(ident.Obj.Decl.(*ast.ValueSpec).Doc.Text())
 
-		scanner.addMessage(typeName, key, code, messages)
+		scanner.addMessage(typeName, typeConst.Name(), typeConst.Val().String(), messages)
 	}
 
 	return sortedMessageList(scanner.Messages[typeName])
@@ -91,15 +87,15 @@ func ParseMessage(s string) map[string]string {
 
 func (scanner *I18nScanner) addMessage(
 	typeName *types.TypeName,
-	key string, code int64, messages map[string]string,
+	name, key string, messages map[string]string,
 ) {
 	if scanner.Messages == nil {
 		scanner.Messages = map[*types.TypeName][]*Message{}
 	}
 
 	statusErr := &Message{
-		Key:   key,
-		Code:  code,
+		T:     name,
+		K:     key,
 		Langs: messages,
 	}
 

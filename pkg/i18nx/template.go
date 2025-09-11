@@ -13,23 +13,26 @@ func init() {
 }
 
 func (v {{ .ClassName }}) Localize(manager *i18nx.Localize, lang string) i18nx.I18nMessage {
-	return i18nx.NewMessage(v.Key(), v.Code()).Localize(manager, lang)
+	return i18nx.NewMessage(v.Key(), v.Prefix()).Localize(manager, lang)
 }
 
 func (v {{ .ClassName }}) Key() string {
-	switch v { {{range .Keys}}
-	case {{ .Key}}:
-		return "{{ .Key}}"{{end}}
-	}
-	return "UNKNOWN"
+	return string(v)
 }
 
-func (v {{ .ClassName }}) Code() int64 {
-	return int64(v)
+func (v {{ .ClassName }}) Prefix() string {
+	return "{{ .Prefix }}"
+}
+
+func (v {{ .ClassName }}) ID() string {
+	if v.Prefix() == "" {
+		return v.Key()
+	}
+	return v.Prefix() + "." + v.Key()
 }
 
 func (v {{ .ClassName }}) Value() string {
-	return i18nx.NewMessage(v.Key(), v.Code()).Value()
+	return i18nx.NewMessage(v.Key(), v.Prefix()).Value()
 }
 
 func (v {{ .ClassName }}) Message(lang string) string {
@@ -37,10 +40,10 @@ func (v {{ .ClassName }}) Message(lang string) string {
 }
 
 {{range $lang, $error := .Messages}}func Get{{ $.ClassName }}{{upper $lang}}Messages() []*i18n.Message {
-	var messages []*i18n.Message
+	var fields []*i18n.Message
 {{range $error}}
-	messages = append(messages, &i18n.Message{ID: {{.Key}}.Key(), Other: "{{.Message}}"}){{end}}
-	return messages
+	fields = append(fields, &i18n.Message{ID: {{.T}}.ID(), Other: "{{.Message}}"}){{end}}
+	return fields
 }
 
 {{end}}func RegisterI18nMessages() { {{range $lang, $error := .Messages}}

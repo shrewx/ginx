@@ -19,8 +19,12 @@ func i18nCommand() *cobra.Command {
 			}
 
 			g := i18nx.NewI18nGenerator(pkg)
-			g.Scan(args...)
-			g.Output(pwd)
+			var prefix string
+			if args[0] == "prefix" {
+				prefix = args[1]
+			}
+			g.Scan(args[2:]...)
+			g.Output(pwd, prefix)
 		},
 	}
 }

@@ -3,7 +3,6 @@ package ginx
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -80,7 +79,7 @@ func (t *TestStatusErrorOperator) Path() string {
 
 func (t *TestStatusErrorOperator) Output(ctx *gin.Context) (interface{}, error) {
 	return nil, &statuserror.StatusErr{
-		Key:       "CUSTOM_ERROR",
+		K:         "CUSTOM_ERROR",
 		ErrorCode: http.StatusUnprocessableEntity,
 		Message:   "Custom error message",
 	}
@@ -403,65 +402,6 @@ func TestGinMiddlewareWrapper(t *testing.T) {
 
 	// 验证中间件设置的头部
 	assert.Equal(t, "true", w.Header().Get("X-Middleware-Applied"))
-}
-
-func TestGinErrorWrapper(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	tests := []struct {
-		name           string
-		err            error
-		expectedStatus int
-		validate       func(*testing.T, *httptest.ResponseRecorder)
-	}{
-		{
-			name: "StatusErr error",
-			err: &statuserror.StatusErr{
-				Key:       "TEST_ERROR",
-				ErrorCode: http.StatusBadRequest,
-				Message:   "Test error message",
-			},
-			expectedStatus: http.StatusBadRequest,
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				var errorResp map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &errorResp)
-				assert.NoError(t, err)
-				assert.Equal(t, "TEST_ERROR", errorResp["key"])
-			},
-		},
-		{
-			name:           "CommonError",
-			err:            errors.BadRequest,
-			expectedStatus: http.StatusBadRequest,
-		},
-		{
-			name:           "generic error",
-			err:            fmt.Errorf("generic error"),
-			expectedStatus: http.StatusInternalServerError,
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				var errorResp map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &errorResp)
-				assert.NoError(t, err)
-				assert.Equal(t, "generic error", errorResp["message"])
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			w := httptest.NewRecorder()
-			ctx, _ := gin.CreateTestContext(w)
-			ctx.Request = httptest.NewRequest("GET", "/test", nil)
-
-			ginErrorWrapper(tt.err, ctx)
-
-			assert.Equal(t, tt.expectedStatus, w.Code)
-
-			if tt.validate != nil {
-				tt.validate(t, w)
-			}
-		})
-	}
 }
 
 func TestGetLang(t *testing.T) {

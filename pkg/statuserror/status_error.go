@@ -5,8 +5,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/shrewx/ginx/internal/fields"
+
 	"github.com/shrewx/ginx/pkg/i18nx"
-	"github.com/shrewx/ginx/pkg/i18nx/messages"
 	"github.com/shrewx/ginx/pkg/logx"
 )
 
@@ -14,16 +15,21 @@ type CommonError interface {
 	Error() string
 	Code() int64
 
-	WithArgs(args ...interface{}) CommonError
-	WithField(key string, value string) CommonError
+	WithParams(params map[string]interface{}) CommonError
+	WithField(key interface{}, value string) CommonError
 
 	Localize(manager *i18nx.Localize, lang string) i18nx.I18nMessage
 	Value() string
 }
 
+const (
+	ErrorCodes       = "error_codes"
+	ErrorsReferences = "errors.references"
+)
+
 type StatusErr struct {
 	// 错误名称
-	Key string `json:"key"`
+	K string `json:"key"`
 	// 状态码
 	ErrorCode int64 `json:"code"`
 	// 消息
@@ -36,11 +42,8 @@ type StatusErr struct {
 	Messages map[string]string `json:"-"`
 	// 错误参数
 	Params map[string]interface{} `json:"-"`
-
-	// 参数
-	Args []interface{} `json:"-"`
-	// 其他信息
-	Fields map[string]string `json:"-"`
+	// 其他I18n字段
+	Fields map[interface{}]string `json:"-"`
 
 	// 错误列表
 	ErrList []map[string]interface{} `json:"-"`
@@ -48,17 +51,17 @@ type StatusErr struct {
 
 func NewStatusErr(key string, code int64) *StatusErr {
 	return &StatusErr{
-		Key:       key,
+		K:         key,
 		ErrorCode: code,
 		Params:    make(map[string]interface{}),
-		Fields:    make(map[string]string),
+		Fields:    make(map[interface{}]string),
 	}
 }
 
 func (v *StatusErr) Summary() string {
 	s := fmt.Sprintf(
 		`[%s][%d]`,
-		v.Key,
+		v.K,
 		v.Code(),
 	)
 
@@ -70,19 +73,19 @@ func (v *StatusErr) StatusCode() int {
 }
 
 func (v *StatusErr) Error() string {
-	return fmt.Sprintf("[%s][%d]", v.Key, v.Code())
+	return fmt.Sprintf("[%s][%d]", v.K, v.Code())
+}
+
+func (v *StatusErr) Key() string {
+	return v.K
 }
 
 func (v *StatusErr) Value() string {
 	return v.Message
 }
 
-func (v *StatusErr) WithArgs(args ...interface{}) CommonError {
-	v.Args = append(v.Args, args...)
-	if v.Fields == nil {
-		v.Fields = make(map[string]string, 0)
-	}
-	return v
+func (v *StatusErr) Prefix() string {
+	return ErrorCodes
 }
 
 func (v *StatusErr) WithParams(params map[string]interface{}) CommonError {
@@ -91,25 +94,32 @@ func (v *StatusErr) WithParams(params map[string]interface{}) CommonError {
 }
 
 func (v *StatusErr) Localize(manager *i18nx.Localize, lang string) i18nx.I18nMessage {
-	if v.Message != "" {
-		return v
-	}
+	// 如果有错误列表，优先处理错误列表的格式化
 	if len(v.ErrList) > 0 {
 		var m []string
 		for i := range v.ErrList {
 			if e, ok := v.ErrList[i]["statusErr"]; ok {
 				statusErr := e.(*StatusErr)
 				statusErr.Localize(manager, lang)
+
+				if indexValue, hasIndex := statusErr.Fields[fields.ErrorIndex]; hasIndex {
+					m = append(m, fmt.Sprintf("%s:%s", fields.ErrorIndex.Localize(manager, lang).Value(), indexValue))
+				}
 				m = append(m, statusErr.Message)
 			}
 		}
 		v.Message = strings.Join(m, "\n")
+		return v
+	}
+
+	if v.Message != "" {
+		return v
 	} else {
-		header, err := manager.LocalizeData(lang, v.Key, v.Params)
+		header, err := manager.LocalizeData(lang, fmt.Sprintf("%s.%d", v.Prefix(), v.Code()), v.Params)
 		if err != nil {
-			logx.Error("localize error message fail, err:%s", err.Error())
+			logx.Errorf("localize error message fail, err:%s", err.Error())
 			return &StatusErr{
-				Key:       "BadRequest",
+				K:         "BadRequest",
 				ErrorCode: 40000000001,
 			}
 		}
@@ -119,30 +129,36 @@ func (v *StatusErr) Localize(manager *i18nx.Localize, lang string) i18nx.I18nMes
 			body       string
 		)
 		for key, value := range v.Fields {
-			if key == messages.ErrorLine.Key() {
-				msg, err := manager.Localize(lang, key)
-				if err == nil {
-					lineHeader = fmt.Sprintf("%s:%s\n", msg, value)
-				} else {
-					lineHeader = fmt.Sprintf("%s:%s\n", key, value)
-				}
-			} else {
-				msg, err := manager.Localize(lang, key)
+			switch k := key.(type) {
+			case string:
+				msg, err := manager.Localize(lang, k)
 				if err == nil {
 					body += fmt.Sprintf("\n>> %s:%s", msg, value)
 				} else {
 					body += fmt.Sprintf("\n>> %s:%s", key, value)
 				}
+			case i18nx.I18nMessage:
+				msg := k.Localize(manager, lang).Value()
+				if k.Key() == fields.ErrorLine.Key() {
+					lineHeader = fmt.Sprintf("%s:%s\n", msg, value)
+				} else {
+					body += fmt.Sprintf("\n>> %s:%s", msg, value)
+				}
 			}
 		}
 
-		v.Message = lineHeader + header + body
+		// Format: lineHeader + main message + body fields
+		if lineHeader != "" {
+			v.Message = lineHeader + header + body
+		} else {
+			v.Message = header + body
+		}
 	}
 
 	return v
 }
 
-func (v *StatusErr) WithField(key string, value string) CommonError {
+func (v *StatusErr) WithField(key interface{}, value string) CommonError {
 	v.Fields[key] = value
 	return v
 }

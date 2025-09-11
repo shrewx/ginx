@@ -2,17 +2,23 @@
 package errors
 
 import (
+	"fmt"
+	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"github.com/shrewx/ginx/pkg/i18nx"
 	"github.com/shrewx/ginx/pkg/statuserror"
-	"github.com/nicksnyder/go-i18n/v2/i18n"
+	"strconv"
 )
 
 func init() {
 	i18nx.RegisterHooks(RegisterErrorMessages)
 }
 
-func (v StatusError) WithArgs(args ...interface{}) statuserror.CommonError {
-	return statuserror.NewStatusErr(v.Key(), v.Code()).WithArgs(args)
+func (v StatusError) WithParams(params map[string]interface{}) statuserror.CommonError {
+	return statuserror.NewStatusErr(v.Key(), v.Code()).WithParams(params)
+}
+
+func (v StatusError) WithField(key interface{}, value string) statuserror.CommonError {
+	return statuserror.NewStatusErr(v.Key(), v.Code()).WithField(key, value)
 }
 
 func (v StatusError) Localize(manager *i18nx.Localize, lang string) i18nx.I18nMessage {
@@ -32,7 +38,7 @@ func (v StatusError) StatusCode() int {
 }
 
 func (v StatusError) Key() string {
-	switch v { 
+	switch v {
 	case BadRequest:
 		return "BadRequest"
 	case Unauthorized:
@@ -49,6 +55,17 @@ func (v StatusError) Key() string {
 	return "UNKNOWN"
 }
 
+func (v StatusError) Prefix() string {
+	return "error_codes"
+}
+
+func (v StatusError) ID() string {
+	if v.Prefix() == "" {
+		return strconv.FormatInt(int64(v.Code()), 10)
+	}
+	return v.Prefix() + "." + strconv.FormatInt(int64(v.Code()), 10)
+}
+
 func (v StatusError) Code() int64 {
 	return int64(v)
 }
@@ -61,22 +78,31 @@ func (v StatusError) Value() string {
 	return statuserror.NewStatusErr(v.Key(), v.Code()).Value()
 }
 
-func (v StatusError) WithField(key string, value string) statuserror.CommonError {
-	return statuserror.NewStatusErr(v.Key(), v.Code()).WithField(key, value)
+func GetStatusErrorENMessages() []*i18n.Message {
+	var messages []*i18n.Message
+
+	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("en.%s", BadRequest.ID()), Other: "bad request"})
+	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("en.%s", Unauthorized.ID()), Other: "unauthorized"})
+	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("en.%s", Forbidden.ID()), Other: "forbidden"})
+	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("en.%s", NotFound.ID()), Other: "not found"})
+	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("en.%s", Conflict.ID()), Other: "conflict"})
+	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("en.%s", InternalServerError.ID()), Other: "internal server error"})
+	return messages
 }
 
 func GetStatusErrorZHMessages() []*i18n.Message {
 	var messages []*i18n.Message
 
-	messages = append(messages, &i18n.Message{ID: BadRequest.Key(), Other: "请求参数错误"})
-	messages = append(messages, &i18n.Message{ID: Unauthorized.Key(), Other: "未授权，请先授权"})
-	messages = append(messages, &i18n.Message{ID: Forbidden.Key(), Other: "禁止操作"})
-	messages = append(messages, &i18n.Message{ID: NotFound.Key(), Other: "资源未找到"})
-	messages = append(messages, &i18n.Message{ID: Conflict.Key(), Other: "资源冲突"})
-	messages = append(messages, &i18n.Message{ID: InternalServerError.Key(), Other: "内部处理错误"})
+	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("zh.%s", BadRequest.ID()), Other: "请求参数错误"})
+	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("zh.%s", Unauthorized.ID()), Other: "未授权，请先授权"})
+	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("zh.%s", Forbidden.ID()), Other: "禁止操作"})
+	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("zh.%s", NotFound.ID()), Other: "资源未找到"})
+	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("zh.%s", Conflict.ID()), Other: "资源冲突"})
+	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("zh.%s", InternalServerError.ID()), Other: "未知的异常信息：请联系技术服务工程师进行排查"})
 	return messages
 }
 
-func RegisterErrorMessages() { 
-	i18nx.AddMessages("zh", GetStatusErrorZHMessages())  
+func RegisterErrorMessages() {
+	i18nx.AddMessages("en", GetStatusErrorENMessages())
+	i18nx.AddMessages("zh", GetStatusErrorZHMessages())
 }

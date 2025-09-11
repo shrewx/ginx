@@ -2,6 +2,8 @@ package statuserror
 
 import (
 	"strconv"
+
+	"github.com/shrewx/ginx/internal/fields"
 )
 
 // ErrorList handle many errors to return
@@ -10,8 +12,8 @@ type ErrorList struct {
 }
 
 type errorEntry struct {
-	err  error
-	line int64
+	err   error
+	index int64
 }
 
 func (e *errorEntry) Error() string {
@@ -28,16 +30,21 @@ func (e *ErrorList) Do(f func() error) {
 	}
 }
 
-func (e *ErrorList) DoWithLine(f func() error, line int64) {
+func (e *ErrorList) DoWithIndex(f func() error, index int64) {
 	if err := f(); err != nil {
 		switch t := err.(type) {
 		case *StatusErr:
-			err = t.WithField("err_line", strconv.FormatInt(line, 10))
+			err = t.WithField(fields.ErrorIndex, strconv.FormatInt(index, 10))
 		case CommonError:
-			err = t.WithField("err_line", strconv.FormatInt(line, 10))
+			err = t.WithField(fields.ErrorIndex, strconv.FormatInt(index, 10))
 		}
 		e.errors = append(e.errors, err)
 	}
+}
+
+// DoWithLine 保持向后兼容，内部调用 DoWithIndex
+func (e *ErrorList) DoWithLine(f func() error, line int64) {
+	e.DoWithIndex(f, line)
 }
 
 func (e *ErrorList) Return() error {
@@ -48,7 +55,7 @@ func (e *ErrorList) Return() error {
 		return e.errors[0]
 	}
 	statusError := &StatusErr{
-		Key:       "ErrorsList",
+		K:         "ErrorsList",
 		ErrorCode: 5000000001,
 	}
 
@@ -57,10 +64,21 @@ func (e *ErrorList) Return() error {
 		case *StatusErr:
 			statusError.ErrList = append(statusError.ErrList, map[string]interface{}{"statusErr": e})
 		case CommonError:
-			statusError.ErrList = append(statusError.ErrList, map[string]interface{}{"statusErr": e})
+			// 将 CommonError 转换为 StatusErr 以保持一致性
+			se := &StatusErr{
+				K:         "CommonError",
+				ErrorCode: e.Code(),
+				Message:   e.Error(),
+				Fields:    make(map[interface{}]string),
+			}
+			// 复制字段信息
+			if statusErr, ok := e.(*StatusErr); ok {
+				se.Fields = statusErr.Fields
+			}
+			statusError.ErrList = append(statusError.ErrList, map[string]interface{}{"statusErr": se})
 		default:
 			se := &StatusErr{
-				Key:       "InternalServerError",
+				K:         "InternalServerError",
 				ErrorCode: 5000000001,
 				Message:   "internal error",
 			}

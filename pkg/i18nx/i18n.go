@@ -3,19 +3,23 @@ package i18nx
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/BurntSushi/toml"
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/logx"
 	"golang.org/x/text/language"
-	"os"
-	"path/filepath"
-	"strings"
+	"gopkg.in/yaml.v3"
 )
 
 type I18nMessage interface {
 	Localize(manager *Localize, lang string) I18nMessage
+	Key() string
 	Value() string
+	Prefix() string
 }
 
 func RegisterHooks(f func()) {
@@ -72,6 +76,8 @@ func Load(c *conf.I18N) {
 			bundle.RegisterUnmarshalFunc("toml", toml.Unmarshal)
 		case "JSON":
 			bundle.RegisterUnmarshalFunc("json", json.Unmarshal)
+		case "YAML":
+			bundle.RegisterUnmarshalFunc("yaml", yaml.Unmarshal)
 		default:
 			panic(fmt.Errorf("unmarshal type %s is not support", c.UnmarshalType))
 		}
@@ -92,28 +98,37 @@ func Load(c *conf.I18N) {
 			panic(fmt.Errorf("load i18n files fail, err: %s", err.Error()))
 		}
 	}
-	localizes := make(map[string]*i18n.Localizer)
+	localize.localizers = make(map[string]*i18n.Localizer)
 	for _, lang := range langs {
-		localizes[lang] = i18n.NewLocalizer(bundle, lang)
+		localize.localizers[lang] = i18n.NewLocalizer(bundle, lang)
 	}
-
-	localize.localizers = localizes
 }
 
 type Localize struct {
 	localizers map[string]*i18n.Localizer
 }
 
+// getLocalizer ensures a non-nil localizer.
+// If not initialized via Load, it builds a temporary one
+// using the requested lang with defaultLang as fallback.
+func (m *Localize) getLocalizer(lang string) *i18n.Localizer {
+	// Always respect the requested lang to avoid mismatches when MessageID embeds lang
+	if m != nil && m.localizers != nil && m.localizers[lang] != nil {
+		return m.localizers[lang]
+	}
+	return i18n.NewLocalizer(bundle, lang)
+}
+
 func (m *Localize) LocalizeData(lang, key string, data map[string]interface{}) (string, error) {
-	return m.localizers[lang].Localize(&i18n.LocalizeConfig{
-		MessageID:    key,
+	return m.getLocalizer(lang).Localize(&i18n.LocalizeConfig{
+		MessageID:    fmt.Sprintf("%s.%s", lang, key),
 		TemplateData: data,
 	})
 }
 
 func (m *Localize) Localize(lang, key string) (string, error) {
-	return m.localizers[lang].Localize(&i18n.LocalizeConfig{
-		MessageID: key,
+	return m.getLocalizer(lang).Localize(&i18n.LocalizeConfig{
+		MessageID: fmt.Sprintf("%s.%s", lang, key),
 	})
 }
 
@@ -127,25 +142,31 @@ func pathExist(path string) bool {
 }
 
 type Message struct {
+	// 类型
+	T string `json:"type"`
 	// 名称
-	Key string `json:"key"`
-	// 码
-	Code int64 `json:"code"`
+	K string `json:"key"`
+	// 前缀
+	P string `json:"prefix"`
 	// 消息
-	Message string `json:"messages"`
+	Message string `json:"message"`
 	// 消息
 	Langs map[string]string `json:"-"`
 }
 
-func NewMessage(key string, code int64) *Message {
+func NewMessage(key, prefix string) *Message {
 	return &Message{
-		Key:  key,
-		Code: code,
+		K: key,
+		P: prefix,
 	}
 }
 
 func (m *Message) Localize(manager *Localize, lang string) I18nMessage {
-	message, err := manager.LocalizeData(lang, m.Key, map[string]interface{}{})
+	key := m.K
+	if m.P != "" {
+		key = m.P + "." + m.K
+	}
+	message, err := manager.LocalizeData(lang, key, map[string]interface{}{})
 	if err != nil {
 		logx.Error("localize error message fail, err:%s", err.Error())
 		return m
@@ -154,6 +175,14 @@ func (m *Message) Localize(manager *Localize, lang string) I18nMessage {
 	return m
 }
 
+func (m *Message) Key() string {
+	return m.K
+}
+
 func (m *Message) Value() string {
 	return m.Message
+}
+
+func (m *Message) Prefix() string {
+	return m.P
 }

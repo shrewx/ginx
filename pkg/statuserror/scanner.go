@@ -98,7 +98,7 @@ func (scanner *StatusErrorScanner) addStatusError(
 	}
 
 	statusErr := &StatusErr{
-		Key:       key,
+		K:         key,
 		ErrorCode: code,
 		Messages:  messages,
 	}
