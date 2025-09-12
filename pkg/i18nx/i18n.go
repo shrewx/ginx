@@ -168,7 +168,7 @@ func (m *Message) Localize(manager *Localize, lang string) I18nMessage {
 	}
 	message, err := manager.LocalizeData(lang, key, map[string]interface{}{})
 	if err != nil {
-		logx.Error("localize error message fail, err:%s", err.Error())
+		logx.Errorf("localize error message fail, err:%s", err.Error())
 		return m
 	}
 	m.Message = message

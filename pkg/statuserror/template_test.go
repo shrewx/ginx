@@ -82,19 +82,24 @@ func TestStatusErrorTemplate_ValueFunction(t *testing.T) {
 	assert.Contains(t, StatusErrorTemplate, "return statuserror.NewStatusErr(v.Key(), v.Code()).Value()")
 }
 
-func TestStatusErrorTemplate_MessageFunctions(t *testing.T) {
-	// Test that the message generation functions are present
+func TestStatusErrorTemplate_MapFunction(t *testing.T) {
+	// Test that the map generation function is present
+	assert.Contains(t, StatusErrorTemplate, "func Get{{ .ClassName }}Map() map[string]map[{{ .ClassName }}]string")
+	assert.Contains(t, StatusErrorTemplate, "return map[string]map[{{ .ClassName }}]string{")
 	assert.Contains(t, StatusErrorTemplate, "{{range $lang, $error := .Messages}}")
-	assert.Contains(t, StatusErrorTemplate, "func Get{{ $.ClassName }}{{upper $lang}}Messages()")
-	assert.Contains(t, StatusErrorTemplate, "[]*i18n.Message")
-	assert.Contains(t, StatusErrorTemplate, "fmt.Sprintf(\"{{$lang}}.%s\", {{.K}}.ID())")
-	assert.Contains(t, StatusErrorTemplate, "Other: \"{{.Message}}\"")
+	assert.Contains(t, StatusErrorTemplate, "\"{{$lang}}\": {")
+	assert.Contains(t, StatusErrorTemplate, "{{range $error}}{{.K}}: \"{{.Message}}\",")
 }
 
 func TestStatusErrorTemplate_RegisterFunction(t *testing.T) {
 	// Test that the register function is present
 	assert.Contains(t, StatusErrorTemplate, "func RegisterErrorMessages() {")
-	assert.Contains(t, StatusErrorTemplate, "i18nx.AddMessages(\"{{$lang}}\", Get{{ $.ClassName }}{{upper $lang}}Messages())")
+	assert.Contains(t, StatusErrorTemplate, "errorMap := Get{{ .ClassName }}Map()")
+	assert.Contains(t, StatusErrorTemplate, "for lang, messages := range errorMap {")
+	assert.Contains(t, StatusErrorTemplate, "var i18nMessages []*i18n.Message")
+	assert.Contains(t, StatusErrorTemplate, "for key, message := range messages {")
+	assert.Contains(t, StatusErrorTemplate, "i18nMessages = append(i18nMessages, &i18n.Message{ID: fmt.Sprintf(\"%s.%s\", lang, key.ID()), Other: message})")
+	assert.Contains(t, StatusErrorTemplate, "i18nx.AddMessages(lang, i18nMessages)")
 }
 
 func TestStatusErrorTemplate_Imports(t *testing.T) {

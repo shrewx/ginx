@@ -37,23 +37,29 @@ func (v CommonField) Message(lang string) string {
 	return v.Localize(i18nx.Instance(), lang).Value()
 }
 
-func GetCommonFieldENMessages() []*i18n.Message {
-	var messages []*i18n.Message
-
-	messages = append(messages, &i18n.Message{ID: ErrorIndex.ID(), Other: "index"})
-	messages = append(messages, &i18n.Message{ID: ErrorLine.ID(), Other: "line"})
-	return messages
+func GetCommonFieldMap() map[string]map[CommonField]string {
+	return map[string]map[CommonField]string{
+		"en": {
+			ErrorIndex: "index",
+			ErrorLine: "line",
+			
+		},
+		"zh": {
+			ErrorIndex: "索引",
+			ErrorLine: "行",
+			
+		},
+		
+	}
 }
 
-func GetCommonFieldZHMessages() []*i18n.Message {
-	var messages []*i18n.Message
-
-	messages = append(messages, &i18n.Message{ID: ErrorIndex.ID(), Other: "索引"})
-	messages = append(messages, &i18n.Message{ID: ErrorLine.ID(), Other: "行"})
-	return messages
-}
-
-func RegisterI18nMessages() { 
-	i18nx.AddMessages("en", GetCommonFieldENMessages()) 
-	i18nx.AddMessages("zh", GetCommonFieldZHMessages())  
+func RegisterI18nMessages() {
+	messageMap := GetCommonFieldMap()
+	for lang, messages := range messageMap {
+		var i18nMessages []*i18n.Message
+		for key, message := range messages {
+			i18nMessages = append(i18nMessages, &i18n.Message{ID: key.ID(), Other: message})
+		}
+		i18nx.AddMessages(lang, i18nMessages)
+	}
 }

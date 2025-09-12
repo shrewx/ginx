@@ -4,14 +4,18 @@
 接口结构参考[httptransport](https://github.com/go-courier/httptransport)设计思想，对gin做了封装，并使用[httptransport](https://github.com/go-courier/httptransport)的openapi和client自动生成工具适配。
 封装目的主要有几点：
 1. 规范接口定义，解析传入参数的统一处理
-2. 使用注释+代码自动生成openapi和client端，更加方便快捷。
-
+2. 使用注释+代码自动生成
+   1. 错误码及i18n文件
+   2. 相关i18n文件
+   3. openapi文档
+   4. client端SDK
+3. 使用标准的rule约束，方便AI快速开发
 
 ## 快速上手
 
-[example](https://github.com/shrewx/toolx/tree/master/__example__) 
+//TODO
 
-## 说明
+## 接口定义
 
 ### 路由
 
@@ -47,7 +51,7 @@ func (g *GetHelloWorld) Output(ctx *gin.Context) (interface{}, error) {
 
 第一个定义为`interface`，即返回任何类型的对象都可以， 框架会判断其类型来设置不同的ContextType(默认使用`application/json`)
 
-第二个是`error`,为了规范错误码的定义，使用[statuserror](https://github.com/shrewx/statuserror)库和[自动化工具](https://github.com/shrewx/toolx)进行生成，错误码返回结构定义为：
+第二个是`error`,为了规范错误码的定义，使用[statuserror](https://github.com/shrewx/ginx/pkg/statuserror)库和[自动化工具](https://github.com/shrewx/ginx/pkg/toolx)进行生成，错误码返回结构定义为：
 ```json
 {
   "key": "DDIResourceNotFound", 
@@ -268,8 +272,158 @@ func (g *OtherType) Output(ctx *gin.Context) (interface{}, error) {
 	return nil, nil
 }
 ```
+## 错误处理
+### 接口错误文件定义
+目前错误定义设计的结构如下：
+```go
+//go:generate toolx gen error -p error_codes -c StatusError
+//go:generate toolx gen errorYaml -p error_codes -o ../i18n -c StatusError
+type StatusError int
 
-### 注释Swagger
+const (
+	// @errZH 请求参数错误
+	// @errEN bad request
+	BadRequest StatusError = http.StatusBadRequest*1e8 + iota + 1
+)
+
+const (
+	// @errZH 未授权，请先授权
+	// @errEN unauthorized
+	Unauthorized StatusError = http.StatusUnauthorized*1e8 + iota + 1
+)
+
+const (
+	// @errZH 禁止操作
+	// @errEN forbidden
+	Forbidden StatusError = http.StatusForbidden*1e8 + iota + 1
+)
+
+const (
+	// @errZH 资源未找到
+	// @errEN not found
+	NotFound StatusError = http.StatusNotFound*1e8 + iota + 1
+)
+
+const (
+	// @errZH 资源冲突
+	// @errEN conflict
+	Conflict StatusError = http.StatusConflict*1e8 + iota + 1
+)
+
+const (
+	// @errZH 未知的异常信息：请联系技术服务工程师进行排查
+	// @errEN internal server error
+	InternalServerError StatusError = http.StatusInternalServerError*1e8 + iota + 1
+)
+
+```
+1. 其中每个错误码的定义都包含了中文和英文的描述，错误描述信息对应的就是最终错误返回的I18N信息：
+   * errZH 表示中文描述
+   * errEN 表示英文描述
+2. 错误的定义也要符合HTTP状态码的定义，即错误码的前三位就是HTTP状态码,错误信息最好和状态码表达的含义一致，比如：
+   * 404表示资源未找到，则比如用户未找到错误可定义为`40400000001`
+   * 409表示资源冲突, 则比如用户已存在错误可定义为`40900000001`
+### 接口错误文件生成
+1. 执行`go:generate toolx gen error -p error_codes -c StatusError`命令，就会在该错误文件目录下生成一个带__generated.go文件,该文件是自动生成的不要修改里面的内容否则下一次
+程序生成后就会被覆盖，生成文件主要创建了相关方法以及I18N注册。
+2.  执行`go:generate toolx gen errorYaml -p error_codes -o ../i18n -c StatusError`命令，会在../i18n目录下生成对应的i18yaml文件。
+
+### 错误参数注入
+1. 错误定义里面有相关参数：
+   ```go
+   // @errZH 用户不存在，名称：{{.Name}}
+   // @errEN user not found, name: {{.Name}}
+   UserNameNotFound StatusError = http.StatusNotFound*1e8 + iota + 1
+   ```
+   则在使用的时候需要传入参数：
+   ```go
+   UserNameNotFound.WithParams(map[string]interface{}{
+       "Name": "ryan",
+   })
+   ```
+   最终的错误信息为：
+   ```
+   用户不存在，名称：ryan
+   ```
+2. 错误信息里面，字段是动态的，且也需要I18N
+   首先先定义定义一个string类型的常量，使用toolx生成对应的i18n
+   ```go
+   //go:generate toolx gen i18n prefix errors.references Field
+   type Field string
+   
+   const (
+       // @i18nZH 年龄
+       // @i18nEN age
+       Age Field = "age"
+   )
+   ```
+   
+   ```go
+   UserNameNotFound.WithParams(map[string]interface{}{
+       "Name": "ryan",
+   }).WithField(Name,"ryan")
+   ```
+   最终的错误信息为：
+   ```
+   用户不存在，名称：ryan
+   >> 年龄：18
+   ```
+3. 如果需要捕获循环中的多个错误展示，则可以搭配error_list使用，比如：
+   ```go
+   func (g *Name) Output(ctx *gin.Context) (interface{}, error) {
+       var errlist = statuserror.WithErrorList()
+       for i, name := range g.Names {
+           if err := g.checkName(name); err != nil {
+               errlist.DoWithIndex(func() error {
+                   return statuserror.UserNameNotFound.WithParams(map[string]interface{}{
+                       "Name": name,
+                   })
+               }, int64(i)+1)
+           }
+       }
+       return nil, errlist.Return()
+   }
+   ```
+   最终的错误信息为：
+   ```
+   索引：1
+   用户不存在，名称：a
+   索引：2
+   用户不存在，名称：b
+   索引：3
+   用户不存在，名称：c
+   ```
+   
+## I18N
+### 字段定义
+```go
+//go:generate toolx gen i18n prefix errors.references CommonField
+//go:generate toolx gen i18nYaml -p errors.references -o ../i18n -c CommonField
+type CommonField string
+
+const (
+	// @i18nZH 行
+	// @i18nEN line
+	ErrorLine CommonField = "line"
+	// @i18nZH 索引
+	// @i18nEN index
+	ErrorIndex CommonField = "err_index"
+)
+```
+和错误定义类似，使用
+ * i18nZH 标识中文信息
+ * i18nEN 标识英文信息
+### 生成i18n文件
+执行`go:generate toolx gen i18nYaml -p errors.references -c CommonField`命令
+```yaml
+zh:
+  errors:
+    references:
+      err_index: 索引
+      line: 行
+```
+可以看出，-p参数指定的是i18n的key前缀，使用.表示多级关系
+## 注释Swagger
 生成swagger文档go常见方式是使用go-swagger库搭配注释的形式，该库同样也是通过注释的形式来实现swagger文档的生成。
 有所不同的是不需要特定的tag说明，而是使用ast库对代码进行所有注释的扫描，并且对响应结果和错误都会进行类型判断。
 ```go
@@ -308,7 +462,7 @@ func (g *CreateUserInfo) Output(ctx *gin.Context) (interface{}, error) {
 
 由于go-swagger暂时只支持到openapi2.0, 而本库使用的是openapi3.0，所以就没有直接通过引入go-swagger库来展示swagger ui，而是通过docker启动了swaggerui达到相同效果。使用到的命令是：
 ```shell
-go install github.com/shrewx/toolx
+go install github.com/shrewx/ginx/pkg/toolx
 
 toolx swagger -p "swagger ui 页面的端口,默认9200" -s "后台提供服务的地址，默认http://127.0.0.1:8888"
 ```
@@ -322,16 +476,16 @@ toolx swagger -p "swagger ui 页面的端口,默认9200" -s "后台提供服务�
 toolx gen openapi -p "后台服务代码路径，默认为当前路径"
 ```
 
-### Client生成
+## Client生成
 为了方便其他服务调用，可自动生成client相关代码，命令为：
 ```shell
 toolx gen client -s "客户端名称" -u "openapi.jso（支持url和本地路径）"
 ```
 
 
-### 提高开发效率
+## 提高开发效率
 
-#### Goland添加接口模版
+### Goland添加接口模版
 在 Preferences --> Editor --> Live Template 添加一个Go Template
 ```go
 import (

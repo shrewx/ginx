@@ -39,14 +39,24 @@ func (v {{ .ClassName }}) Message(lang string) string {
 	return v.Localize(i18nx.Instance(), lang).Value()
 }
 
-{{range $lang, $error := .Messages}}func Get{{ $.ClassName }}{{upper $lang}}Messages() []*i18n.Message {
-	var fields []*i18n.Message
-{{range $error}}
-	fields = append(fields, &i18n.Message{ID: {{.T}}.ID(), Other: "{{.Message}}"}){{end}}
-	return fields
+func Get{{ .ClassName }}Map() map[string]map[{{ .ClassName }}]string {
+	return map[string]map[{{ .ClassName }}]string{
+		{{range $lang, $error := .Messages}}"{{$lang}}": {
+			{{range $error}}{{.T}}: "{{.Message}}",
+			{{end}}
+		},
+		{{end}}
+	}
 }
 
-{{end}}func RegisterI18nMessages() { {{range $lang, $error := .Messages}}
-	i18nx.AddMessages("{{$lang}}", Get{{ $.ClassName }}{{upper $lang}}Messages()) {{end}} 
+func RegisterI18nMessages() {
+	messageMap := Get{{ .ClassName }}Map()
+	for lang, messages := range messageMap {
+		var i18nMessages []*i18n.Message
+		for key, message := range messages {
+			i18nMessages = append(i18nMessages, &i18n.Message{ID: key.ID(), Other: message})
+		}
+		i18nx.AddMessages(lang, i18nMessages)
+	}
 }
 `

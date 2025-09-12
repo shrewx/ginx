@@ -1,6 +1,7 @@
 package fields
 
-//go:generate toolx gen i18n prefix errors.references CommonField
+//go:generate toolx gen i18n -p errors.references -c CommonField
+//go:generate toolx gen i18nYaml -p errors.references -o ../i18n -c CommonField
 type CommonField string
 
 const (

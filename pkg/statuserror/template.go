@@ -8,6 +8,7 @@ import (
 	"github.com/shrewx/ginx/pkg/i18nx"
 	"github.com/shrewx/ginx/pkg/statuserror"
 	"github.com/nicksnyder/go-i18n/v2/i18n"
+	"strconv"
 )
 
 func init() {
@@ -69,14 +70,24 @@ func (v {{ .ClassName }}) Value() string {
 	return statuserror.NewStatusErr(v.Key(), v.Code()).Value()
 }
 
-{{range $lang, $error := .Messages}}func Get{{ $.ClassName }}{{upper $lang}}Messages() []*i18n.Message {
-	var fields []*i18n.Message
-{{range $error}}
-	fields = append(fields, &i18n.Message{ID:  fmt.Sprintf("{{$lang}}.%s", {{.K}}.ID()), Other: "{{.Message}}"}){{end}}
-	return fields
+func Get{{ .ClassName }}Map() map[string]map[{{ .ClassName }}]string {
+	return map[string]map[{{ .ClassName }}]string{
+		{{range $lang, $error := .Messages}}"{{$lang}}": {
+			{{range $error}}{{.K}}: "{{.Message}}",
+			{{end}}
+		},
+		{{end}}
+	}
 }
 
-{{end}}func RegisterErrorMessages() { {{range $lang, $error := .Messages}}
-	i18nx.AddMessages("{{$lang}}", Get{{ $.ClassName }}{{upper $lang}}Messages()) {{end}} 
+func RegisterErrorMessages() {
+	errorMap := Get{{ .ClassName }}Map()
+	for lang, messages := range errorMap {
+		var i18nMessages []*i18n.Message
+		for key, message := range messages {
+			i18nMessages = append(i18nMessages, &i18n.Message{ID: fmt.Sprintf("%s.%s", lang, key.ID()), Other: message})
+		}
+		i18nx.AddMessages(lang, i18nMessages)
+	}
 }
 `

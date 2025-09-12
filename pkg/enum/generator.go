@@ -3,15 +3,15 @@ package enum
 import (
 	"bytes"
 	"fmt"
-	"github.com/go-courier/packagesx"
 	"go/types"
-	"golang.org/x/tools/go/packages"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
 	"unicode"
+
+	"github.com/go-courier/packagesx"
+	"golang.org/x/tools/go/packages"
 )
 
 type Enumeration struct {
@@ -93,7 +93,7 @@ func (g *EnumerationGenerator) Output(pwd string) {
 			panic(err)
 		}
 
-		err = ioutil.WriteFile(filepath.Join(dir, filename), buff.Bytes(), os.ModePerm)
+		err = os.WriteFile(filepath.Join(dir, filename), buff.Bytes(), os.ModePerm)
 		if err != nil {
 			panic(err)
 		}

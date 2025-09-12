@@ -3,9 +3,9 @@ package errors
 
 import (
 	"fmt"
-	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"github.com/shrewx/ginx/pkg/i18nx"
 	"github.com/shrewx/ginx/pkg/statuserror"
+	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"strconv"
 )
 
@@ -38,7 +38,7 @@ func (v StatusError) StatusCode() int {
 }
 
 func (v StatusError) Key() string {
-	switch v {
+	switch v { 
 	case BadRequest:
 		return "BadRequest"
 	case Unauthorized:
@@ -78,31 +78,37 @@ func (v StatusError) Value() string {
 	return statuserror.NewStatusErr(v.Key(), v.Code()).Value()
 }
 
-func GetStatusErrorENMessages() []*i18n.Message {
-	var messages []*i18n.Message
-
-	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("en.%s", BadRequest.ID()), Other: "bad request"})
-	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("en.%s", Unauthorized.ID()), Other: "unauthorized"})
-	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("en.%s", Forbidden.ID()), Other: "forbidden"})
-	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("en.%s", NotFound.ID()), Other: "not found"})
-	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("en.%s", Conflict.ID()), Other: "conflict"})
-	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("en.%s", InternalServerError.ID()), Other: "internal server error"})
-	return messages
-}
-
-func GetStatusErrorZHMessages() []*i18n.Message {
-	var messages []*i18n.Message
-
-	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("zh.%s", BadRequest.ID()), Other: "请求参数错误"})
-	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("zh.%s", Unauthorized.ID()), Other: "未授权，请先授权"})
-	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("zh.%s", Forbidden.ID()), Other: "禁止操作"})
-	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("zh.%s", NotFound.ID()), Other: "资源未找到"})
-	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("zh.%s", Conflict.ID()), Other: "资源冲突"})
-	messages = append(messages, &i18n.Message{ID: fmt.Sprintf("zh.%s", InternalServerError.ID()), Other: "未知的异常信息：请联系技术服务工程师进行排查"})
-	return messages
+func GetStatusErrorMap() map[string]map[StatusError]string {
+	return map[string]map[StatusError]string{
+		"en": {
+			BadRequest: "bad request",
+			Unauthorized: "unauthorized",
+			Forbidden: "forbidden",
+			NotFound: "not found",
+			Conflict: "conflict",
+			InternalServerError: "internal server error",
+			
+		},
+		"zh": {
+			BadRequest: "请求参数错误",
+			Unauthorized: "未授权，请先授权",
+			Forbidden: "禁止操作",
+			NotFound: "资源未找到",
+			Conflict: "资源冲突",
+			InternalServerError: "未知的异常信息：请联系技术服务工程师进行排查",
+			
+		},
+		
+	}
 }
 
 func RegisterErrorMessages() {
-	i18nx.AddMessages("en", GetStatusErrorENMessages())
-	i18nx.AddMessages("zh", GetStatusErrorZHMessages())
+	errorMap := GetStatusErrorMap()
+	for lang, messages := range errorMap {
+		var i18nMessages []*i18n.Message
+		for key, message := range messages {
+			i18nMessages = append(i18nMessages, &i18n.Message{ID: fmt.Sprintf("%s.%s", lang, key.ID()), Other: message})
+		}
+		i18nx.AddMessages(lang, i18nMessages)
+	}
 }

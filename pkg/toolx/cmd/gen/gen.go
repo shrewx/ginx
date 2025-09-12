@@ -9,8 +9,10 @@ var CmdGen = &cobra.Command{
 
 func init() {
 	CmdGen.AddCommand(statusErrorCommand())
+	CmdGen.AddCommand(statusErrorYamlCommand())
 	CmdGen.AddCommand(openapiCommand())
 	CmdGen.AddCommand(clientCommand())
 	CmdGen.AddCommand(enumCommand())
 	CmdGen.AddCommand(i18nCommand())
+	CmdGen.AddCommand(statusI18nYamlCommand())
 }

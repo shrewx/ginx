@@ -2,12 +2,15 @@ package i18nx
 
 import (
 	"fmt"
-	"github.com/go-courier/packagesx"
-	"github.com/shrewx/ginx/pkg/utils"
 	"go/types"
-	"golang.org/x/tools/go/packages"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/go-courier/packagesx"
+	"github.com/shrewx/ginx/pkg/utils"
+	"golang.org/x/tools/go/packages"
+	"gopkg.in/yaml.v2"
 )
 
 type IMessage struct {
@@ -54,6 +57,31 @@ func getPkgDirAndPackage(importPath string) (string, string) {
 	return filepath.Dir(pkgs[0].GoFiles[0]), pkgs[0].Name
 }
 
+// createNestedMap 将点分隔的 prefix 转换为嵌套的 map 结构
+func createNestedMap(prefix string, messages map[string]string) map[string]interface{} {
+	parts := strings.Split(prefix, ".")
+	if len(parts) == 1 {
+		// 如果只有一个部分，直接返回
+		return map[string]interface{}{
+			prefix: messages,
+		}
+	}
+
+	// 从最深层开始构建嵌套结构
+	result := map[string]interface{}{
+		parts[len(parts)-1]: messages,
+	}
+
+	// 从后往前构建嵌套结构
+	for i := len(parts) - 2; i >= 0; i-- {
+		result = map[string]interface{}{
+			parts[i]: result,
+		}
+	}
+
+	return result
+}
+
 func (g *I18nMessageGenerator) Output(pwd, prefix string) {
 	for name, i18n := range g.messages {
 		pkgDir, packageName := getPkgDirAndPackage(i18n.TypeName.Pkg().Path())
@@ -84,6 +112,62 @@ func (g *I18nMessageGenerator) Output(pwd, prefix string) {
 		err = os.WriteFile(filepath.Join(dir, filename), buff.Bytes(), os.ModePerm)
 		if err != nil {
 			panic(err)
+		}
+	}
+}
+
+func (g *I18nMessageGenerator) OutputYAML(pwd, prefix, outputDir string) {
+	// 确保输出目录存在
+	if outputDir != "" {
+		err := os.MkdirAll(outputDir, os.ModePerm)
+		if err != nil {
+			panic(fmt.Errorf("failed to create output directory %s: %v", outputDir, err))
+		}
+	}
+
+	for name, i18n := range g.messages {
+
+		// 按语言分组生成YAML文件
+		languageMessages := make(map[string]map[string]string)
+
+		for _, m := range i18n.Messages {
+			for lang, message := range m.Langs {
+				if languageMessages[lang] == nil {
+					languageMessages[lang] = make(map[string]string)
+				}
+				// 使用消息的ID作为key
+				messageID := strings.Trim(m.Key(), "\"")
+				if m.Prefix() != "" {
+					messageID = m.Prefix() + "." + strings.Trim(m.Key(), "\"")
+				}
+				languageMessages[lang][messageID] = message
+			}
+		}
+
+		// 为每种语言生成单独的YAML文件
+		for lang, messages := range languageMessages {
+			// 将 prefix 转换为嵌套结构
+			nestedPrefix := createNestedMap(prefix, messages)
+			yamlData := map[string]interface{}{
+				lang: nestedPrefix,
+			}
+
+			yamlContent, err := yaml.Marshal(yamlData)
+			if err != nil {
+				panic(fmt.Errorf("failed to marshal YAML for language %s: %v", lang, err))
+			}
+
+			// 生成文件名：{lang}_{prefix}.yaml
+			filename := fmt.Sprintf("%s_%s.yaml", lang, utils.Camel2Case(name))
+			filePath := filename
+			if outputDir != "" {
+				filePath = filepath.Join(outputDir, filename)
+			}
+
+			err = os.WriteFile(filePath, yamlContent, os.ModePerm)
+			if err != nil {
+				panic(fmt.Errorf("failed to write YAML file %s: %v", filePath, err))
+			}
 		}
 	}
 }

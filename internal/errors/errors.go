@@ -2,7 +2,8 @@ package errors
 
 import "net/http"
 
-//go:generate toolx gen error prefix error_codes StatusError
+//go:generate toolx gen error -p error_codes -c StatusError
+//go:generate toolx gen errorYaml -p error_codes -o ../i18n -c StatusError
 type StatusError int
 
 const (
