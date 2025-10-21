@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-courier/packagesx"
 	"github.com/shrewx/ginx/pkg/utils"
-	"github.com/shrewx/stringx"
 	"golang.org/x/tools/go/packages"
 	"gopkg.in/yaml.v2"
 )
@@ -88,7 +87,7 @@ func (g *StatusErrorGenerator) Output(pwd, prefix string) {
 	for name, statusErr := range g.statusErrors {
 		pkgDir, packageName := getPkgDirAndPackage(statusErr.TypeName.Pkg().Path())
 		dir, _ := filepath.Rel(pwd, pkgDir)
-		filename := stringx.Camel2Case(name) + "__generated.go"
+		filename := utils.Camel2Case(name) + "__generated.go"
 
 		var messages = make(map[string][]*StatusErr)
 		for _, e := range statusErr.Errors {

@@ -7,6 +7,7 @@ toolchain go1.24.3
 require (
 	github.com/fatih/color v1.13.0
 	github.com/gin-gonic/gin v1.10.1
+	github.com/glebarez/sqlite v1.11.0
 	github.com/go-courier/codegen v1.1.2
 	github.com/go-courier/oas v1.2.1
 	github.com/go-courier/packagesx v1.0.2
@@ -20,7 +21,6 @@ require (
 	github.com/nicksnyder/go-i18n/v2 v2.6.0
 	github.com/pelletier/go-toml/v2 v2.2.2
 	github.com/pkg/errors v0.9.1
-	github.com/shrewx/stringx v0.0.0-20220813065501-1b4a4077d113
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cast v1.5.0
 	github.com/spf13/cobra v1.5.0
@@ -56,7 +56,6 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/glebarez/go-sqlite v1.21.2 // indirect
-	github.com/glebarez/sqlite v1.11.0 // indirect
 	github.com/go-sql-driver/mysql v1.8.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect

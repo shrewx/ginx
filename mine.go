@@ -2,8 +2,7 @@ package ginx
 
 import (
 	"bytes"
-
-	"github.com/shrewx/stringx"
+	"github.com/shrewx/ginx/pkg/utils"
 
 	"net/url"
 
@@ -24,7 +23,7 @@ func (a *Attachment) ContentType() string {
 }
 
 func (a *Attachment) Header(ctx *gin.Context) {
-	if stringx.IsASCII(a.filename) {
+	if utils.IsASCII(a.filename) {
 		ctx.Writer.Header().Set("Content-Disposition", `attachment; filename="`+a.filename+`"`)
 	} else {
 		ctx.Writer.Header().Set("Content-Disposition", `attachment; filename*=UTF-8''`+url.QueryEscape(a.filename))

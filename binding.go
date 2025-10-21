@@ -1,6 +1,7 @@
 package ginx
 
 import (
+	"github.com/shrewx/ginx/pkg/utils"
 	"mime/multipart"
 	"reflect"
 	"strconv"
@@ -8,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/internal/binding"
-	"github.com/shrewx/stringx"
 )
 
 // Validate 使用缓存的类型信息进行快速验证和绑定
@@ -32,7 +32,7 @@ func Validate(ctx *gin.Context, router interface{}, typeInfo *OperatorTypeInfo) 
 		// 处理body字段的特殊逻辑
 		// 为body字段设置JSON标签，用于后续的错误处理和日志记录
 		if field.In == "body" {
-			tag := stringx.FirstLower(field.Name)
+			tag := utils.FirstLower(field.Name)
 			if jsonTag := field.Type.Field(0).Tag.Get("json"); jsonTag != "" {
 				tag = jsonTag
 			}
