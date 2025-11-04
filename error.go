@@ -1,19 +1,22 @@
 package ginx
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 	e2 "github.com/shrewx/ginx/internal/errors"
 	"github.com/shrewx/ginx/pkg/i18nx"
 	"github.com/shrewx/ginx/pkg/logx"
 	"github.com/shrewx/ginx/pkg/statuserror"
-	"net/http"
 )
 
 func ginErrorWrapper(err error, ctx *gin.Context) {
 	operationName, _ := ctx.Get(OperationName)
 	logx.Errorf("handle %s request err: %s", operationName, err.Error())
 	switch e := err.(type) {
+	case statuserror.ClientResponseError:
+		abortWithOriginalError(ctx, e)
 	case *statuserror.StatusErr:
 		abortWithStatusPureJSON(ctx, defaultFormatCodeFunc(e.Code()), defaultFormatErrorFunc(e.Localize(i18nx.Instance(), GetLang(ctx))))
 	case statuserror.CommonError:
@@ -31,6 +34,19 @@ func ginErrorWrapper(err error, ctx *gin.Context) {
 func abortWithStatusPureJSON(c *gin.Context, code int, jsonObj any) {
 	c.Abort()
 	c.PureJSON(code, jsonObj)
+}
+
+func abortWithOriginalError(c *gin.Context, e statuserror.ClientResponseError) {
+	// 透传下游服务响应：如果是 ClientResponseError，原样写回头部/状态码/响应体
+	if hdr := e.Headers(); hdr != nil {
+		for k, vs := range hdr {
+			for _, v := range vs {
+				c.Writer.Header().Add(k, v)
+			}
+		}
+	}
+	c.Abort()
+	c.Data(e.Status(), e.ContentType(), e.Body())
 }
 
 type formatErrorFunc func(err i18nx.I18nMessage) interface{}
