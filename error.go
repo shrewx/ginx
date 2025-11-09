@@ -11,23 +11,124 @@ import (
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
+// ErrorHandler 定义错误处理器函数类型
+// 参数: err - 错误对象, ctx - gin上下文
+// 返回: handled - 是否已处理该错误，如果返回 true，框架将不再使用默认处理逻辑
+type ErrorHandler func(err error, ctx *gin.Context) bool
+
+// ErrorFormatterConfig 错误格式化配置
+// 用于统一管理错误格式化函数
+type ErrorFormatterConfig struct {
+	// FormatError 通用错误消息格式化函数
+	FormatError formatErrorFunc
+	// FormatCode 状态码格式化函数
+	FormatCode formatCodeFunc
+	// FormatBadRequest BadRequest 错误格式化函数
+	FormatBadRequest formatErrorFunc
+	// FormatInternalServerError InternalServerError 错误格式化函数
+	FormatInternalServerError formatErrorFunc
+}
+
+type formatErrorFunc func(err i18nx.I18nMessage) interface{}
+type formatCodeFunc func(code int64) int
+
+var (
+	// registeredErrorHandlers 存储注册的自定义错误处理器
+	registeredErrorHandlers []ErrorHandler
+	// defaultFormatterConfig 默认格式化配置
+	defaultFormatterConfig = ErrorFormatterConfig{
+		FormatError: func(err i18nx.I18nMessage) interface{} {
+			return err
+		},
+		FormatCode: func(code int64) int {
+			statusCode := statuserror.StatusCodeFromCode(code)
+			if statusCode < 400 {
+				statusCode = http.StatusUnprocessableEntity
+			}
+			return statusCode
+		},
+		FormatBadRequest: func(err i18nx.I18nMessage) interface{} {
+			// 返回本地化后的错误对象，而不是原始的 StatusError
+			return err
+		},
+		FormatInternalServerError: func(err i18nx.I18nMessage) interface{} {
+			// 返回本地化后的错误对象，而不是原始的 StatusError
+			return err
+		},
+	}
+)
+
+// RegisterErrorHandler 注册自定义错误处理器
+// 处理器按注册顺序执行，如果某个处理器返回 true，表示已处理该错误，后续处理器将不再执行
+// 框架默认处理器会作为最后一个处理器自动执行，确保所有错误都能被处理
+//
+// 注意：此函数应在服务启动时调用，服务启动后不应再注册新的处理器
+//
+// 示例用法:
+//
+//	ginx.RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
+//	    if customErr, ok := err.(*MyCustomError); ok {
+//	        ctx.JSON(400, gin.H{"error": customErr.Message})
+//	        return true  // 表示已处理
+//	    }
+//	    return false  // 表示未处理，继续下一个处理器或默认处理器
+//	})
+func RegisterErrorHandler(handler ErrorHandler) {
+	if handler == nil {
+		return
+	}
+	registeredErrorHandlers = append(registeredErrorHandlers, handler)
+}
+
 func ginErrorWrapper(err error, ctx *gin.Context) {
 	operationName, _ := ctx.Get(OperationName)
 	logx.Errorf("handle %s request err: %s", operationName, err.Error())
+
+	// 先遍历用户注册的自定义错误处理器
+	for _, handler := range registeredErrorHandlers {
+		if handler(err, ctx) {
+			// 如果处理器返回 true，表示已处理，不再执行后续处理器
+			return
+		}
+	}
+
+	// 如果所有自定义处理器都没有处理，使用框架默认处理器（永远在最后）
+	defaultFrameworkErrorHandler(err, ctx)
+}
+
+// defaultFrameworkErrorHandler 框架默认错误处理器
+// 作为最后一个处理器，处理所有未被自定义处理器处理的错误
+func defaultFrameworkErrorHandler(err error, ctx *gin.Context) bool {
 	switch e := err.(type) {
 	case statuserror.ClientResponseError:
 		abortWithOriginalError(ctx, e)
+		return true
 	case *statuserror.StatusErr:
-		abortWithStatusPureJSON(ctx, defaultFormatCodeFunc(e.Code()), defaultFormatErrorFunc(e.Localize(i18nx.Instance(), GetLang(ctx))))
+		abortWithStatusPureJSON(ctx,
+			defaultFormatterConfig.FormatCode(e.Code()),
+			defaultFormatterConfig.FormatError(e.Localize(i18nx.Instance(), GetLang(ctx))))
+		return true
 	case statuserror.CommonError:
 		if errors.Is(e, e2.BadRequest) {
-			abortWithStatusPureJSON(ctx, defaultFormatCodeFunc(e.Code()), defaultBadRequestFormatter(e.Localize(i18nx.Instance(), GetLang(ctx))))
+			abortWithStatusPureJSON(ctx,
+				defaultFormatterConfig.FormatCode(e.Code()),
+				defaultFormatterConfig.FormatBadRequest(e.Localize(i18nx.Instance(), GetLang(ctx))))
+			return true
 		} else if errors.Is(e, e2.InternalServerError) {
-			abortWithStatusPureJSON(ctx, defaultFormatCodeFunc(e.Code()), defaultInternalServerErrorFormatter(e.Localize(i18nx.Instance(), GetLang(ctx))))
+			abortWithStatusPureJSON(ctx,
+				defaultFormatterConfig.FormatCode(e.Code()),
+				defaultFormatterConfig.FormatInternalServerError(e.Localize(i18nx.Instance(), GetLang(ctx))))
+			return true
 		}
-		abortWithStatusPureJSON(ctx, defaultFormatCodeFunc(e.Code()), defaultFormatErrorFunc(e.Localize(i18nx.Instance(), GetLang(ctx))))
+		abortWithStatusPureJSON(ctx,
+			defaultFormatterConfig.FormatCode(e.Code()),
+			defaultFormatterConfig.FormatError(e.Localize(i18nx.Instance(), GetLang(ctx))))
+		return true
 	default:
-		abortWithStatusPureJSON(ctx, defaultFormatCodeFunc(http.StatusUnprocessableEntity), defaultFormatErrorFunc(e2.InternalServerError.Localize(i18nx.Instance(), GetLang(ctx))))
+		abortWithStatusPureJSON(ctx,
+			defaultFormatterConfig.FormatCode(http.StatusUnprocessableEntity),
+			defaultFormatterConfig.FormatError(e2.InternalServerError.Localize(i18nx.Instance(), GetLang(ctx))))
+		return true
 	}
 }
 
@@ -49,42 +150,36 @@ func abortWithOriginalError(c *gin.Context, e statuserror.ClientResponseError) {
 	c.Data(e.Status(), e.ContentType(), e.Body())
 }
 
-type formatErrorFunc func(err i18nx.I18nMessage) interface{}
-
-var defaultFormatErrorFunc = func(err i18nx.I18nMessage) interface{} {
-	return err
-}
-
-var defaultBadRequestFormatter = func(err i18nx.I18nMessage) interface{} { return e2.BadRequest }
-
-var defaultInternalServerErrorFormatter = func(err i18nx.I18nMessage) interface{} { return e2.InternalServerError }
-
-type formatCodeFunc func(code int64) int
-
-var defaultFormatCodeFunc = func(code int64) int {
-	statusCode := statuserror.StatusCodeFromCode(code)
-	if statusCode < 400 {
-		statusCode = http.StatusUnprocessableEntity
+// ConfigureErrorFormatter 批量配置错误格式化函数
+// 提供统一的配置方式，可以一次性设置多个格式化函数
+//
+// 示例用法:
+//
+//	ginx.ConfigureErrorFormatter(ginx.ErrorFormatterConfig{
+//	    FormatError: func(err i18nx.I18nMessage) interface{} {
+//	        return map[string]interface{}{"error": err.Value()}
+//	    },
+//	    FormatCode: func(code int64) int {
+//	        return int(code / 1000000)
+//	    },
+//	    FormatBadRequest: func(err i18nx.I18nMessage) interface{} {
+//	        return map[string]interface{}{"bad_request": true, "message": err.Value()}
+//	    },
+//	    FormatInternalServerError: func(err i18nx.I18nMessage) interface{} {
+//	        return map[string]interface{}{"internal_error": true, "message": err.Value()}
+//	    },
+//	})
+func ConfigureErrorFormatter(config ErrorFormatterConfig) {
+	if config.FormatError != nil {
+		defaultFormatterConfig.FormatError = config.FormatError
 	}
-	return statusCode
-}
-
-// FormatError customize error message structure
-func FormatError(formatFunc formatErrorFunc) {
-	defaultFormatErrorFunc = formatFunc
-}
-
-// FormatCode customize response code
-func FormatCode(formatFunc formatCodeFunc) {
-	defaultFormatCodeFunc = formatFunc
-}
-
-// SetBadRequestFormatter customize bad request error message structure
-func SetBadRequestFormatter(formatFunc formatErrorFunc) {
-	defaultBadRequestFormatter = formatFunc
-}
-
-// SetInternalServerErrorFormatter customize internal server error message structure
-func SetInternalServerErrorFormatter(formatFunc formatErrorFunc) {
-	defaultInternalServerErrorFormatter = formatFunc
+	if config.FormatCode != nil {
+		defaultFormatterConfig.FormatCode = config.FormatCode
+	}
+	if config.FormatBadRequest != nil {
+		defaultFormatterConfig.FormatBadRequest = config.FormatBadRequest
+	}
+	if config.FormatInternalServerError != nil {
+		defaultFormatterConfig.FormatInternalServerError = config.FormatInternalServerError
+	}
 }
