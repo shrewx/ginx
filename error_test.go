@@ -570,3 +570,49 @@ func TestGinErrorWrapperWithErrorsIs(t *testing.T) {
 		})
 	}
 }
+
+// TestGinErrorWrapper_ClientResponseError verifies that ClientResponseError is proxied as-is
+func TestGinErrorWrapper_ClientResponseError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	// 构造一个下游错误
+	headers := http.Header{}
+	headers.Set("X-From-Downstream", "yes")
+	headers.Set("Content-Type", "application/problem+json")
+	body := []byte(`{"error":"downstream"}`)
+
+	err := statuserror.NewRemoteHTTPError(418, headers, body, "")
+
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest("GET", "/test", nil)
+
+	ginErrorWrapper(err, ctx)
+
+	// 应按原始状态码/头/内容透传
+	assert.Equal(t, 418, w.Code)
+	assert.Equal(t, "yes", w.Header().Get("X-From-Downstream"))
+	assert.Equal(t, "application/problem+json", w.Header().Get("Content-Type"))
+	assert.Equal(t, string(body), w.Body.String())
+}
+
+// TestGinErrorWrapper_ClientResponseError_ContentTypeFallback 验证 content-type 的回退逻辑
+func TestGinErrorWrapper_ClientResponseError_ContentTypeFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	// 没有 Content-Type 时应回退为 application/json（由实现决定）
+	headers := http.Header{}
+	body := []byte(`{"error":"x"}`)
+
+	err := statuserror.NewRemoteHTTPError(500, headers, body, "")
+
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest("GET", "/test", nil)
+
+	ginErrorWrapper(err, ctx)
+
+	assert.Equal(t, 500, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	assert.Equal(t, string(body), w.Body.String())
+}
