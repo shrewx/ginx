@@ -11,10 +11,22 @@ import (
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
-// ErrorHandler 定义错误处理器函数类型
-// 参数: err - 错误对象, ctx - gin上下文
-// 返回: handled - 是否已处理该错误，如果返回 true，框架将不再使用默认处理逻辑
-type ErrorHandler func(err error, ctx *gin.Context) bool
+// ErrorHandler 错误处理器接口
+// 用于自定义错误处理逻辑，支持扩展框架的错误处理能力
+type ErrorHandler interface {
+	// Handle 处理错误
+	// err: 错误对象
+	// ctx: gin上下文
+	// 返回: 是否已处理错误（true表示已处理，false表示未处理，继续下一个处理器）
+	Handle(err error, ctx *gin.Context) bool
+}
+
+// ErrorHandlerFunc 错误处理器函数类型，方便快速实现
+type ErrorHandlerFunc func(err error, ctx *gin.Context) bool
+
+func (f ErrorHandlerFunc) Handle(err error, ctx *gin.Context) bool {
+	return f(err, ctx)
+}
 
 // ErrorFormatterConfig 错误格式化配置
 // 用于统一管理错误格式化函数
@@ -34,7 +46,10 @@ type formatCodeFunc func(code int64) int
 
 var (
 	// registeredErrorHandlers 存储注册的自定义错误处理器
+	// 注意：注册操作应在服务启动时进行，服务启动后不应再注册新的处理器
 	registeredErrorHandlers []ErrorHandler
+	// 默认错误处理器实例，作为最后的fallback
+	defaultErrorHandler ErrorHandler = &defaultErrorHandlerImpl{}
 	// defaultFormatterConfig 默认格式化配置
 	defaultFormatterConfig = ErrorFormatterConfig{
 		FormatError: func(err i18nx.I18nMessage) interface{} {
@@ -62,17 +77,13 @@ var (
 // 处理器按注册顺序执行，如果某个处理器返回 true，表示已处理该错误，后续处理器将不再执行
 // 框架默认处理器会作为最后一个处理器自动执行，确保所有错误都能被处理
 //
-// 注意：此函数应在服务启动时调用，服务启动后不应再注册新的处理器
-//
-// 示例用法:
-//
-//	ginx.RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
-//	    if customErr, ok := err.(*MyCustomError); ok {
-//	        ctx.JSON(400, gin.H{"error": customErr.Message})
-//	        return true  // 表示已处理
-//	    }
-//	    return false  // 表示未处理，继续下一个处理器或默认处理器
-//	})
+//	// 方式2: 使用结构体实现接口
+//	type MyErrorHandler struct{}
+//	func (h *MyErrorHandler) Handle(err error, ctx *gin.Context) bool {
+//	    // 处理逻辑
+//	    return true
+//	}
+//	ginx.RegisterErrorHandler(&MyErrorHandler{})
 func RegisterErrorHandler(handler ErrorHandler) {
 	if handler == nil {
 		return
@@ -80,25 +91,42 @@ func RegisterErrorHandler(handler ErrorHandler) {
 	registeredErrorHandlers = append(registeredErrorHandlers, handler)
 }
 
-func ginErrorWrapper(err error, ctx *gin.Context) {
+// RegisterErrorHandlerFunc 注册错误处理器函数，方便快速使用
+// 示例用法:
+//
+//	ginx.RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
+//	    if customErr, ok := err.(*MyCustomError); ok {
+//	        ctx.JSON(400, gin.H{"error": customErr.Message})
+//	        return true  // 表示已处理
+//	    }
+//	    return false  // 表示未处理，继续下一个处理器或默认处理器
+//	})
+func RegisterErrorHandlerFunc(fn ErrorHandlerFunc) {
+	RegisterErrorHandler(fn)
+}
+
+func executeErrorHandlers(err error, ctx *gin.Context) {
 	operationName, _ := ctx.Get(OperationName)
 	logx.Errorf("handle %s request err: %s", operationName, err.Error())
 
-	// 先遍历用户注册的自定义错误处理器
+	// 先执行用户注册的处理器
 	for _, handler := range registeredErrorHandlers {
-		if handler(err, ctx) {
-			// 如果处理器返回 true，表示已处理，不再执行后续处理器
+		if handler.Handle(err, ctx) {
+			// 处理器已处理错误，停止执行后续处理器
 			return
 		}
 	}
 
-	// 如果所有自定义处理器都没有处理，使用框架默认处理器（永远在最后）
-	defaultFrameworkErrorHandler(err, ctx)
+	// 如果所有用户注册的处理器都未处理，使用默认处理器作为fallback
+	// 这确保了向后兼容性，即使没有注册任何自定义处理器也能正常工作
+	defaultErrorHandler.Handle(err, ctx)
 }
 
-// defaultFrameworkErrorHandler 框架默认错误处理器
-// 作为最后一个处理器，处理所有未被自定义处理器处理的错误
-func defaultFrameworkErrorHandler(err error, ctx *gin.Context) bool {
+// defaultErrorHandlerImpl 默认错误处理器
+// 实现原有的错误处理逻辑，保持向后兼容
+type defaultErrorHandlerImpl struct{}
+
+func (h *defaultErrorHandlerImpl) Handle(err error, ctx *gin.Context) bool {
 	switch e := err.(type) {
 	case statuserror.ClientResponseError:
 		abortWithOriginalError(ctx, e)

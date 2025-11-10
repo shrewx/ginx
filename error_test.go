@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGinErrorWrapper(t *testing.T) {
+func TestExecuteErrorHandlers(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	i18nx.Load(&conf.I18N{Langs: []string{"zh", "en"}})
 
@@ -71,7 +71,7 @@ func TestGinErrorWrapper(t *testing.T) {
 			ctx, _ := gin.CreateTestContext(w)
 			ctx.Request = httptest.NewRequest("GET", "/test", nil)
 
-			ginErrorWrapper(tt.err, ctx)
+			executeErrorHandlers(tt.err, ctx)
 
 			assert.Equal(t, tt.expectedStatus, w.Code)
 
@@ -130,7 +130,7 @@ func TestStatusErrorI18nResponse(t *testing.T) {
 			ctx.Request = httptest.NewRequest("GET", "/test", nil)
 			ctx.Request.Header.Set(LangHeader, tt.langHeader)
 
-			ginErrorWrapper(e2.BadRequest, ctx)
+			executeErrorHandlers(e2.BadRequest, ctx)
 
 			assert.Equal(t, tt.expectedStatus, w.Code)
 
@@ -378,7 +378,7 @@ func TestConfigureErrorFormatter(t *testing.T) {
 			ctx, _ := gin.CreateTestContext(w)
 			ctx.Request = httptest.NewRequest("GET", "/test", nil)
 
-			ginErrorWrapper(tt.err, ctx)
+			executeErrorHandlers(tt.err, ctx)
 
 			assert.Equal(t, tt.expectedStatus, w.Code)
 
@@ -389,8 +389,8 @@ func TestConfigureErrorFormatter(t *testing.T) {
 	}
 }
 
-// TestGinErrorWrapperWithCustomFormatters tests error wrapper with custom formatters
-func TestGinErrorWrapperWithCustomFormatters(t *testing.T) {
+// TestExecuteErrorHandlersWithCustomFormatters tests error wrapper with custom formatters
+func TestExecuteErrorHandlersWithCustomFormatters(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	i18nx.Load(&conf.I18N{Langs: []string{"zh", "en"}})
 
@@ -465,7 +465,7 @@ func TestGinErrorWrapperWithCustomFormatters(t *testing.T) {
 			ctx, _ := gin.CreateTestContext(w)
 			ctx.Request = httptest.NewRequest("GET", "/test", nil)
 
-			ginErrorWrapper(tt.err, ctx)
+			executeErrorHandlers(tt.err, ctx)
 
 			assert.Equal(t, tt.expectedStatus, w.Code)
 
@@ -476,8 +476,8 @@ func TestGinErrorWrapperWithCustomFormatters(t *testing.T) {
 	}
 }
 
-// TestGinErrorWrapperWithErrorsIs tests the errors.Is functionality
-func TestGinErrorWrapperWithErrorsIs(t *testing.T) {
+// TestExecuteErrorHandlersWithErrorsIs tests the errors.Is functionality
+func TestExecuteErrorHandlersWithErrorsIs(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	i18nx.Load(&conf.I18N{Langs: []string{"zh", "en"}})
 
@@ -537,7 +537,7 @@ func TestGinErrorWrapperWithErrorsIs(t *testing.T) {
 			ctx, _ := gin.CreateTestContext(w)
 			ctx.Request = httptest.NewRequest("GET", "/test", nil)
 
-			ginErrorWrapper(tt.err, ctx)
+			executeErrorHandlers(tt.err, ctx)
 
 			assert.Equal(t, tt.expectedStatus, w.Code)
 
@@ -548,8 +548,8 @@ func TestGinErrorWrapperWithErrorsIs(t *testing.T) {
 	}
 }
 
-// TestGinErrorWrapper_ClientResponseError verifies that ClientResponseError is proxied as-is
-func TestGinErrorWrapper_ClientResponseError(t *testing.T) {
+// TestExecuteErrorHandlers_ClientResponseError verifies that ClientResponseError is proxied as-is
+func TestExecuteErrorHandlers_ClientResponseError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	// 构造一个下游错误
@@ -564,7 +564,7 @@ func TestGinErrorWrapper_ClientResponseError(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(w)
 	ctx.Request = httptest.NewRequest("GET", "/test", nil)
 
-	ginErrorWrapper(err, ctx)
+	executeErrorHandlers(err, ctx)
 
 	// 应按原始状态码/头/内容透传
 	assert.Equal(t, 418, w.Code)
@@ -573,8 +573,8 @@ func TestGinErrorWrapper_ClientResponseError(t *testing.T) {
 	assert.Equal(t, string(body), w.Body.String())
 }
 
-// TestGinErrorWrapper_ClientResponseError_ContentTypeFallback 验证 content-type 的回退逻辑
-func TestGinErrorWrapper_ClientResponseError_ContentTypeFallback(t *testing.T) {
+// TestExecuteErrorHandlers_ClientResponseError_ContentTypeFallback 验证 content-type 的回退逻辑
+func TestExecuteErrorHandlers_ClientResponseError_ContentTypeFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	// 没有 Content-Type 时应回退为 application/json（由实现决定）
@@ -587,7 +587,7 @@ func TestGinErrorWrapper_ClientResponseError_ContentTypeFallback(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(w)
 	ctx.Request = httptest.NewRequest("GET", "/test", nil)
 
-	ginErrorWrapper(err, ctx)
+	executeErrorHandlers(err, ctx)
 
 	assert.Equal(t, 500, w.Code)
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
@@ -595,7 +595,7 @@ func TestGinErrorWrapper_ClientResponseError_ContentTypeFallback(t *testing.T) {
 }
 
 // clearRegisteredErrorHandlers 清理注册的错误处理器，用于测试
-// 注意：默认处理器不会注册到列表中，而是直接在 ginErrorWrapper 中调用，所以无需特殊处理
+// 注意：默认处理器不会注册到列表中，而是作为 fallback 在 executeErrorHandlers 中调用，所以无需特殊处理
 func clearRegisteredErrorHandlers() {
 	registeredErrorHandlers = nil
 }
@@ -628,7 +628,7 @@ func TestRegisterErrorHandler(t *testing.T) {
 		{
 			name: "custom handler handles specific error",
 			setupHandlers: func() {
-				RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
+				RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
 					if customErr, ok := err.(*CustomError); ok {
 						ctx.JSON(customErr.Code, gin.H{"error": customErr.Message, "custom": true})
 						return true
@@ -649,7 +649,7 @@ func TestRegisterErrorHandler(t *testing.T) {
 		{
 			name: "handler returns false falls through to default",
 			setupHandlers: func() {
-				RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
+				RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
 					// 不处理任何错误，返回 false
 					return false
 				})
@@ -666,11 +666,11 @@ func TestRegisterErrorHandler(t *testing.T) {
 			name: "multiple handlers execute in order",
 			setupHandlers: func() {
 				// 第一个处理器：不处理
-				RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
+				RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
 					return false
 				})
 				// 第二个处理器：处理 CustomError
-				RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
+				RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
 					if customErr, ok := err.(*CustomError); ok {
 						ctx.JSON(422, gin.H{"handled_by": "second", "error": customErr.Message})
 						return true
@@ -691,7 +691,7 @@ func TestRegisterErrorHandler(t *testing.T) {
 			name: "handler returns true stops execution",
 			setupHandlers: func() {
 				// 第一个处理器：处理并返回 true
-				RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
+				RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
 					if _, ok := err.(*CustomError); ok {
 						ctx.JSON(200, gin.H{"handled_by": "first"})
 						return true
@@ -699,7 +699,7 @@ func TestRegisterErrorHandler(t *testing.T) {
 					return false
 				})
 				// 第二个处理器：不应该被执行
-				RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
+				RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
 					ctx.JSON(500, gin.H{"handled_by": "second"})
 					return true
 				})
@@ -731,7 +731,7 @@ func TestRegisterErrorHandler(t *testing.T) {
 		{
 			name: "handler handles StatusErr",
 			setupHandlers: func() {
-				RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
+				RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
 					if statusErr, ok := err.(*statuserror.StatusErr); ok && statusErr.K == "CUSTOM_STATUS_ERR" {
 						ctx.JSON(403, gin.H{"custom_status": true, "key": statusErr.K})
 						return true
@@ -768,7 +768,7 @@ func TestRegisterErrorHandler(t *testing.T) {
 			ctx, _ := gin.CreateTestContext(w)
 			ctx.Request = httptest.NewRequest("GET", "/test", nil)
 
-			ginErrorWrapper(tt.err, ctx)
+			executeErrorHandlers(tt.err, ctx)
 
 			assert.Equal(t, tt.expectedStatus, w.Code)
 
@@ -789,7 +789,7 @@ func TestRegisterErrorHandler_NilHandler(t *testing.T) {
 
 	// 注册一个有效的处理器
 	handlerCalled := false
-	RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
+	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
 		handlerCalled = true
 		return false
 	})
@@ -805,7 +805,7 @@ func TestRegisterErrorHandler_NilHandler(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(w)
 	ctx.Request = httptest.NewRequest("GET", "/test", nil)
 
-	ginErrorWrapper(fmt.Errorf("test error"), ctx)
+	executeErrorHandlers(fmt.Errorf("test error"), ctx)
 
 	// 验证处理器被调用了
 	assert.True(t, handlerCalled)
@@ -822,17 +822,17 @@ func TestRegisterErrorHandler_MultipleHandlersOrder(t *testing.T) {
 	executionOrder := make([]int, 0)
 
 	// 注册多个处理器，记录执行顺序
-	RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
+	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
 		executionOrder = append(executionOrder, 1)
 		return false
 	})
 
-	RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
+	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
 		executionOrder = append(executionOrder, 2)
 		return false
 	})
 
-	RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
+	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
 		executionOrder = append(executionOrder, 3)
 		return false
 	})
@@ -842,7 +842,7 @@ func TestRegisterErrorHandler_MultipleHandlersOrder(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(w)
 	ctx.Request = httptest.NewRequest("GET", "/test", nil)
 
-	ginErrorWrapper(fmt.Errorf("test error"), ctx)
+	executeErrorHandlers(fmt.Errorf("test error"), ctx)
 
 	// 验证执行顺序：用户处理器按顺序执行
 	assert.Equal(t, []int{1, 2, 3}, executionOrder)
@@ -861,18 +861,18 @@ func TestRegisterErrorHandler_HandlerStopsChain(t *testing.T) {
 	executionOrder := make([]int, 0)
 
 	// 注册多个处理器
-	RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
+	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
 		executionOrder = append(executionOrder, 1)
 		return false
 	})
 
-	RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
+	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
 		executionOrder = append(executionOrder, 2)
 		ctx.JSON(200, gin.H{"stopped": true})
 		return true // 停止执行
 	})
 
-	RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
+	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
 		executionOrder = append(executionOrder, 3)
 		return false
 	})
@@ -882,7 +882,7 @@ func TestRegisterErrorHandler_HandlerStopsChain(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(w)
 	ctx.Request = httptest.NewRequest("GET", "/test", nil)
 
-	ginErrorWrapper(fmt.Errorf("test error"), ctx)
+	executeErrorHandlers(fmt.Errorf("test error"), ctx)
 
 	// 验证只有前两个处理器被执行（第三个处理器和默认处理器都不会执行）
 	assert.Equal(t, []int{1, 2}, executionOrder)
@@ -905,12 +905,12 @@ func TestDefaultHandlerAlwaysLast(t *testing.T) {
 	executionOrder := make([]string, 0)
 
 	// 注册用户处理器，都返回 false
-	RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
+	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
 		executionOrder = append(executionOrder, "user_handler_1")
 		return false
 	})
 
-	RegisterErrorHandler(func(err error, ctx *gin.Context) bool {
+	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
 		executionOrder = append(executionOrder, "user_handler_2")
 		return false
 	})
@@ -920,7 +920,7 @@ func TestDefaultHandlerAlwaysLast(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(w)
 	ctx.Request = httptest.NewRequest("GET", "/test", nil)
 
-	ginErrorWrapper(e2.BadRequest, ctx)
+	executeErrorHandlers(e2.BadRequest, ctx)
 
 	// 验证用户处理器先执行
 	assert.Equal(t, []string{"user_handler_1", "user_handler_2"}, executionOrder)

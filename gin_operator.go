@@ -163,8 +163,8 @@ func collectOperators(r *GinRouter, operators *[]interface{}) {
 	}
 
 	// 收集中间件操作符
-	for _, middleware := range r.middlewareOperators {
-		*operators = append(*operators, middleware)
+	for _, m := range r.middlewareOperators {
+		*operators = append(*operators, m)
 	}
 
 	// 递归收集子路由的操作符
@@ -190,7 +190,7 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 		instance := typeInfo.NewInstance()
 		operator, ok := instance.(Operator)
 		if !ok {
-			ginErrorWrapper(errors.InternalServerError, ctx)
+			executeErrorHandlers(errors.InternalServerError, ctx)
 			return
 		}
 
@@ -207,41 +207,26 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 		// 使用高性能参数绑定，基于预解析的类型信息
 		if err := ParameterBinding(ctx, instance, typeInfo); err != nil {
 			logx.ErrorWithoutSkip(err)
-			ginErrorWrapper(errors.BadRequest, ctx)
+			executeErrorHandlers(errors.BadRequest, ctx)
 			return
 		}
 
 		// 执行业务逻辑
 		result, err := operator.Output(ctx)
 		if err != nil {
-			ginErrorWrapper(err, ctx)
+			executeErrorHandlers(err, ctx)
 			return
 		}
 
 		// 特殊处理：如果返回gin.HandlerFunc，直接执行
 		if handle, ok := result.(gin.HandlerFunc); ok {
 			handle(ctx)
+			return
 		}
 
-		// 处理正常响应，支持多种响应类型
-		if !ctx.IsAborted() && !ctx.Writer.Written() && ctx.Writer.Status() == http.StatusOK {
-			// POST请求默认返回201状态码
-			code := http.StatusOK
-			if ctx.Request.Method == http.MethodPost {
-				code = http.StatusCreated
-			}
-
-			// 根据返回类型选择响应方式
-			switch response := result.(type) {
-			case MineDescriber: // 文件下载等特殊响应
-				if attachment, ok := response.(*Attachment); ok {
-					attachment.Header(ctx)
-				}
-				ctx.Data(code, response.ContentType(), response.Bytes())
-			default: // 默认JSON响应
-				ctx.JSON(code, response)
-			}
-		}
+		// 使用可扩展的响应处理器链处理响应
+		// 支持用户注册自定义响应处理器，实现灵活的响应处理逻辑
+		executeResponseHandlers(ctx, result)
 
 		return
 	}
@@ -257,7 +242,7 @@ func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
 		instance := typeInfo.NewInstance()
 		middlewareOp, ok := instance.(Operator)
 		if !ok {
-			ginErrorWrapper(errors.InternalServerError, ctx)
+			executeErrorHandlers(errors.InternalServerError, ctx)
 			return
 		}
 
@@ -269,13 +254,13 @@ func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
 
 		if err := ParameterBinding(ctx, instance, typeInfo); err != nil {
 			logx.ErrorWithoutSkip(err)
-			ginErrorWrapper(err, ctx)
+			executeErrorHandlers(err, ctx)
 			return
 		}
 
 		result, err := middlewareOp.Output(ctx)
 		if err != nil {
-			ginErrorWrapper(err, ctx)
+			executeErrorHandlers(err, ctx)
 			return
 		}
 
