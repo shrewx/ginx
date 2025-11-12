@@ -63,6 +63,8 @@ func load(c *conf.Log) *logrus.Logger {
 
 	setLogLevel(logger, c.LogLevel)
 
+	logger.AddHook(NewInfoCallerHook(1))
+
 	return logger
 }
 

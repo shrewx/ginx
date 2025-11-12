@@ -3,15 +3,15 @@ package logx
 import (
 	"fmt"
 	"github.com/sirupsen/logrus"
-	"path/filepath"
-	"runtime"
+	"runtime/debug"
 	"strings"
 )
 
 const (
-	fileField       = "file"
 	defaultLogLabel = "default"
 )
+
+var modulePath string
 
 type LogManager struct {
 	logs map[LogLabel]*logrus.Logger
@@ -24,6 +24,10 @@ func initLogManager() *LogManager {
 }
 
 func (m *LogManager) Load(label LogLabel) *logrus.Logger {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		modulePath = info.Main.Path
+	}
+
 	if _, ok := m.logs[label]; ok {
 		return m.logs[label]
 	} else {
@@ -127,9 +131,9 @@ func Error(args ...interface{}) {
 	if len(args) > 0 {
 		switch t := args[0].(type) {
 		case LogLabel:
-			WithSkip(t).Errorln(args[1:])
+			Label(t).Errorln(args[1:])
 		default:
-			WithSkip().Errorln(args...)
+			Instance().Errorln(args...)
 		}
 	}
 }
@@ -149,9 +153,9 @@ func Fatal(args ...interface{}) {
 	if len(args) > 0 {
 		switch t := args[0].(type) {
 		case LogLabel:
-			WithSkip(t).Fatalln(args[1:])
+			Label(t).Fatalln(args[1:])
 		default:
-			WithSkip().Fatalln(args...)
+			Instance().Fatalln(args...)
 		}
 	}
 }
@@ -160,9 +164,9 @@ func Panic(args ...interface{}) {
 	if len(args) > 0 {
 		switch t := args[0].(type) {
 		case LogLabel:
-			WithSkip(t).Panicln(args[1:])
+			Label(t).Panicln(args[1:])
 		default:
-			WithSkip().Panicln(args...)
+			Instance().Panicln(args...)
 		}
 	}
 }
@@ -227,9 +231,9 @@ func Errorf(format string, args ...interface{}) {
 	if len(args) > 0 {
 		switch t := args[0].(type) {
 		case LogLabel:
-			WithSkip(t).Errorf(format, args[1:])
+			Label(t).Errorf(format, args[1:])
 		default:
-			WithSkip().Errorf(format, args...)
+			Instance().Errorf(format, args...)
 		}
 	}
 }
@@ -238,9 +242,9 @@ func Fatalf(format string, args ...interface{}) {
 	if len(args) > 0 {
 		switch t := args[0].(type) {
 		case LogLabel:
-			WithSkip(t).Fatalf(format, args[1:])
+			Label(t).Fatalf(format, args[1:])
 		default:
-			WithSkip().Fatalf(format, args...)
+			Instance().Fatalf(format, args...)
 		}
 	}
 }
@@ -249,9 +253,9 @@ func Panicf(format string, args ...interface{}) {
 	if len(args) > 0 {
 		switch t := args[0].(type) {
 		case LogLabel:
-			WithSkip(t).Panicf(format, args[1:])
+			Label(t).Panicf(format, args[1:])
 		default:
-			WithSkip().Panicf(format, args...)
+			Instance().Panicf(format, args...)
 		}
 	}
 }
@@ -262,29 +266,4 @@ func WithFields(fields logrus.Fields, labels ...LogLabel) *logrus.Entry {
 	} else {
 		return Label(labels[0]).WithFields(fields)
 	}
-}
-
-func WithSkip(label ...LogLabel) *logrus.Entry {
-	fields := logrus.Fields{fileField: fileInfo(5)}
-	if len(label) == 0 {
-		return Instance().WithFields(fields)
-	} else {
-		return Label(label[0]).WithFields(fields)
-	}
-}
-
-func fileInfo(skip int) string {
-	var filePath []string
-	for i := skip; i >= 0; i-- {
-		_, file, tno, ok := runtime.Caller(i)
-		if !ok {
-			continue
-		}
-		if strings.Contains(file, "shrewx") && strings.Contains(file, "ginx") ||
-			strings.Contains(file, "gin-gonic") {
-			continue
-		}
-		filePath = append(filePath, fmt.Sprintf("%s:%d", filepath.Base(file), tno))
-	}
-	return strings.Join(filePath, " -> ")
 }

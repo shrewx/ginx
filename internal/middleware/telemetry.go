@@ -75,7 +75,7 @@ func Telemetry(agent *ptrace.Agent) gin.HandlerFunc {
 			span.SetAttributes(attribute.String("gin.errors", c.Errors.String()))
 		}
 
-		logx.Info("cost: ", latency, ", path: ", c.Request.URL.Path, ", trace id: ", span.SpanContext().TraceID(), ", span id: ", span.SpanContext().SpanID(),
+		logx.Info("cost: ", latency, ", path: ", c.Request.URL.Path, ", trace id: ", span.SpanContext().TraceID(),
 			", remote ip: ", c.Request.RemoteAddr, ", operator: ", operationName, ", status: ", c.Writer.Status())
 	}
 }

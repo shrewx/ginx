@@ -3,6 +3,8 @@ package ginx
 import (
 	"net/http"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 	e2 "github.com/shrewx/ginx/internal/errors"
@@ -107,7 +109,7 @@ func RegisterErrorHandlerFunc(fn ErrorHandlerFunc) {
 
 func executeErrorHandlers(err error, ctx *gin.Context) {
 	operationName, _ := ctx.Get(OperationName)
-	logx.Errorf("handle %s request err: %s", operationName, err.Error())
+	logx.WithFields(logrus.Fields{logrus.ErrorKey: err}).Errorf("handle %s request failed", operationName)
 
 	// 先执行用户注册的处理器
 	for _, handler := range registeredErrorHandlers {
@@ -127,37 +129,50 @@ func executeErrorHandlers(err error, ctx *gin.Context) {
 type defaultErrorHandlerImpl struct{}
 
 func (h *defaultErrorHandlerImpl) Handle(err error, ctx *gin.Context) bool {
-	switch e := err.(type) {
-	case statuserror.ClientResponseError:
-		abortWithOriginalError(ctx, e)
+	// 使用 errors.As 来检查包装后的错误类型，支持 errors.WithStack 等包装
+	// 这样可以穿透错误包装层，找到底层的错误类型
+
+	// 检查是否是 ClientResponseError
+	var clientRespErr statuserror.ClientResponseError
+	if errors.As(err, &clientRespErr) {
+		abortWithOriginalError(ctx, clientRespErr)
 		return true
-	case *statuserror.StatusErr:
+	}
+
+	// 检查是否是 StatusErr
+	var statusErr *statuserror.StatusErr
+	if errors.As(err, &statusErr) {
 		abortWithStatusPureJSON(ctx,
-			defaultFormatterConfig.FormatCode(e.Code()),
-			defaultFormatterConfig.FormatError(e.Localize(i18nx.Instance(), GetLang(ctx))))
+			defaultFormatterConfig.FormatCode(statusErr.Code()),
+			defaultFormatterConfig.FormatError(statusErr.Localize(i18nx.Instance(), GetLang(ctx))))
 		return true
-	case statuserror.CommonError:
-		if errors.Is(e, e2.BadRequest) {
+	}
+
+	// 检查是否是 CommonError
+	var commonErr statuserror.CommonError
+	if errors.As(err, &commonErr) {
+		if errors.Is(commonErr, e2.BadRequest) {
 			abortWithStatusPureJSON(ctx,
-				defaultFormatterConfig.FormatCode(e.Code()),
-				defaultFormatterConfig.FormatBadRequest(e.Localize(i18nx.Instance(), GetLang(ctx))))
+				defaultFormatterConfig.FormatCode(commonErr.Code()),
+				defaultFormatterConfig.FormatBadRequest(commonErr.Localize(i18nx.Instance(), GetLang(ctx))))
 			return true
-		} else if errors.Is(e, e2.InternalServerError) {
+		} else if errors.Is(commonErr, e2.InternalServerError) {
 			abortWithStatusPureJSON(ctx,
-				defaultFormatterConfig.FormatCode(e.Code()),
-				defaultFormatterConfig.FormatInternalServerError(e.Localize(i18nx.Instance(), GetLang(ctx))))
+				defaultFormatterConfig.FormatCode(commonErr.Code()),
+				defaultFormatterConfig.FormatInternalServerError(commonErr.Localize(i18nx.Instance(), GetLang(ctx))))
 			return true
 		}
 		abortWithStatusPureJSON(ctx,
-			defaultFormatterConfig.FormatCode(e.Code()),
-			defaultFormatterConfig.FormatError(e.Localize(i18nx.Instance(), GetLang(ctx))))
-		return true
-	default:
-		abortWithStatusPureJSON(ctx,
-			defaultFormatterConfig.FormatCode(http.StatusUnprocessableEntity),
-			defaultFormatterConfig.FormatError(e2.InternalServerError.Localize(i18nx.Instance(), GetLang(ctx))))
+			defaultFormatterConfig.FormatCode(commonErr.Code()),
+			defaultFormatterConfig.FormatError(commonErr.Localize(i18nx.Instance(), GetLang(ctx))))
 		return true
 	}
+
+	// 默认处理：未知错误类型
+	abortWithStatusPureJSON(ctx,
+		defaultFormatterConfig.FormatCode(http.StatusUnprocessableEntity),
+		defaultFormatterConfig.FormatError(e2.InternalServerError.Localize(i18nx.Instance(), GetLang(ctx))))
+	return true
 }
 
 func abortWithStatusPureJSON(c *gin.Context, code int, jsonObj any) {
@@ -210,4 +225,8 @@ func ConfigureErrorFormatter(config ErrorFormatterConfig) {
 	if config.FormatInternalServerError != nil {
 		defaultFormatterConfig.FormatInternalServerError = config.FormatInternalServerError
 	}
+}
+
+func WithStack(error error) error {
+	return errors.WithStack(error)
 }

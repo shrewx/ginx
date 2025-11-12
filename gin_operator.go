@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/shrewx/ginx/internal/errors"
+	e2 "github.com/shrewx/ginx/internal/errors"
 	"github.com/shrewx/ginx/internal/middleware"
 	"github.com/shrewx/ginx/pkg/logx"
 	"github.com/shrewx/ginx/pkg/trace"
@@ -190,7 +190,7 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 		instance := typeInfo.NewInstance()
 		operator, ok := instance.(Operator)
 		if !ok {
-			executeErrorHandlers(errors.InternalServerError, ctx)
+			executeErrorHandlers(e2.InternalServerError, ctx)
 			return
 		}
 
@@ -207,12 +207,13 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 		// 使用高性能参数绑定，基于预解析的类型信息
 		if err := ParameterBinding(ctx, instance, typeInfo); err != nil {
 			logx.ErrorWithoutSkip(err)
-			executeErrorHandlers(errors.BadRequest, ctx)
+			executeErrorHandlers(e2.BadRequest, ctx)
 			return
 		}
 
 		// 执行业务逻辑
 		result, err := operator.Output(ctx)
+		logx.Debugf("parse %s params : %+v", typeInfo.ElemType.Name(), operator)
 		if err != nil {
 			executeErrorHandlers(err, ctx)
 			return
@@ -242,7 +243,7 @@ func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
 		instance := typeInfo.NewInstance()
 		middlewareOp, ok := instance.(Operator)
 		if !ok {
-			executeErrorHandlers(errors.InternalServerError, ctx)
+			executeErrorHandlers(e2.InternalServerError, ctx)
 			return
 		}
 
