@@ -13,6 +13,7 @@ import (
 const (
 	fileField  = "file"
 	stackField = "error_stack"
+	skipCaller = "skip_caller"
 )
 
 // InfoCallerHook 自动添加调用位置和错误堆栈信息的 Hook
@@ -37,6 +38,10 @@ func (h *InfoCallerHook) Fire(entry *logrus.Entry) error {
 			entry.Data[stackField] = stack
 		}
 	} else if call := h.getCaller(); call != "" {
+		if _, skip := entry.Data[skipCaller]; skip {
+			delete(entry.Data, skipCaller)
+			return nil
+		}
 		entry.Data[fileField] = call
 	}
 

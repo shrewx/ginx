@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -92,6 +93,9 @@ func (g *GinRouter) Register(r Operator) {
 }
 
 func initGinEngine(r *GinRouter, agent *trace.Agent) *gin.Engine {
+	// 设置为 Release 模式禁用 Gin 的调试日志
+	gin.SetMode(gin.ReleaseMode)
+
 	root := gin.New()
 
 	// health
@@ -111,8 +115,11 @@ func initGinEngine(r *GinRouter, agent *trace.Agent) *gin.Engine {
 	// 预热缓存，提升首次访问性能
 	if len(allOperators) > 0 {
 		PrewarmCache(allOperators)
-		logx.Infof("Prewarmed cache for %d operators", len(allOperators))
 	}
+
+	// 收集路由信息并打印
+	routes := collectRoutes(r, "")
+	printRoutes(routes)
 
 	loadGinRouters(root, r)
 
@@ -206,7 +213,7 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 
 		// 使用高性能参数绑定，基于预解析的类型信息
 		if err := ParameterBinding(ctx, instance, typeInfo); err != nil {
-			logx.ErrorWithoutSkip(err)
+			logx.Error(err)
 			executeErrorHandlers(e2.BadRequest, ctx)
 			return
 		}
@@ -254,7 +261,7 @@ func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
 		ctx.Set(OperationName, typeInfo.ElemType.Name())
 
 		if err := ParameterBinding(ctx, instance, typeInfo); err != nil {
-			logx.ErrorWithoutSkip(err)
+			logx.Error(err)
 			executeErrorHandlers(err, ctx)
 			return
 		}
@@ -279,4 +286,114 @@ func GetLang(ctx *gin.Context) string {
 		lang = strings.ToLower(ctx.GetHeader(LangHeader))
 	}
 	return lang
+}
+
+// RouteInfo 路由信息结构
+type RouteInfo struct {
+	Method      string
+	Path        string
+	Handler     string
+	Middlewares []string
+}
+
+// collectRoutes 收集所有路由信息
+func collectRoutes(r *GinRouter, parentPath string) []RouteInfo {
+	var routes []RouteInfo
+	currentPath := parentPath + r.basePath
+
+	// 收集当前路由的中间件
+	var middlewares []string
+	for _, m := range r.middlewareOperators {
+		middlewares = append(middlewares, getOperatorName(m))
+	}
+
+	// 如果有处理器，记录路由
+	if r.handleOperator != nil {
+		routes = append(routes, RouteInfo{
+			Method:      strings.ToUpper(r.handleOperator.Method()),
+			Path:        currentPath + r.handleOperator.Path(),
+			Handler:     getOperatorName(r.handleOperator),
+			Middlewares: middlewares,
+		})
+	}
+
+	// 递归收集子路由
+	for child := range r.children {
+		childRoutes := collectRoutes(child, currentPath)
+		routes = append(routes, childRoutes...)
+	}
+
+	return routes
+}
+
+// getOperatorName 获取 Operator 的名称
+func getOperatorName(op interface{}) string {
+	t := reflect.TypeOf(op)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	return t.Name()
+}
+
+// printRoutes 打印路由表
+func printRoutes(routes []RouteInfo) {
+	if len(routes) == 0 {
+		return
+	}
+
+	// 找出最长的路径，用于对齐
+	maxPathLen := 0
+	for _, route := range routes {
+		if len(route.Path) > maxPathLen {
+			maxPathLen = len(route.Path)
+		}
+	}
+	if maxPathLen < 30 {
+		maxPathLen = 30
+	}
+
+	logx.InfoWithoutFile("Routes registered:")
+	logx.InfoWithoutFile(strings.Repeat("=", 80))
+
+	// 按方法和路径排序
+	sort.Slice(routes, func(i, j int) bool {
+		if routes[i].Method != routes[j].Method {
+			return routes[i].Method < routes[j].Method
+		}
+		return routes[i].Path < routes[j].Path
+	})
+
+	// 方法颜色映射
+	methodColors := map[string]string{
+		"GET":     "🟢",
+		"POST":    "🟡",
+		"PUT":     "🔵",
+		"DELETE":  "🔴",
+		"PATCH":   "🟣",
+		"HEAD":    "⚪",
+		"OPTIONS": "⚫",
+	}
+
+	for _, route := range routes {
+		icon := methodColors[route.Method]
+		if icon == "" {
+			icon = "  "
+		}
+
+		handlerCount := len(route.Middlewares) + 1
+
+		// 格式化输出
+		pathPadding := maxPathLen - len(route.Path)
+		logx.InfofWithoutFile("%s %-7s %s%s --> %s (%d handlers)",
+			icon,
+			route.Method,
+			route.Path,
+			strings.Repeat(" ", pathPadding),
+			route.Handler,
+			handlerCount,
+		)
+	}
+
+	logx.InfoWithoutFile(strings.Repeat("=", 80))
+	logx.InfofWithoutFile("Total routes: %d", len(routes))
 }

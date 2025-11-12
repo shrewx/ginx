@@ -94,6 +94,17 @@ func Info(args ...interface{}) {
 	}
 }
 
+func InfoWithoutFile(args ...interface{}) {
+	if len(args) > 0 {
+		switch t := args[0].(type) {
+		case LogLabel:
+			Label(t).WithFields(logrus.Fields{skipCaller: true}).Infoln(args[1:])
+		default:
+			Instance().WithFields(logrus.Fields{skipCaller: true}).Infoln(args...)
+		}
+	}
+}
+
 func Print(args ...interface{}) {
 	if len(args) > 0 {
 		switch t := args[0].(type) {
@@ -128,17 +139,6 @@ func Warning(args ...interface{}) {
 }
 
 func Error(args ...interface{}) {
-	if len(args) > 0 {
-		switch t := args[0].(type) {
-		case LogLabel:
-			Label(t).Errorln(args[1:])
-		default:
-			Instance().Errorln(args...)
-		}
-	}
-}
-
-func ErrorWithoutSkip(args ...interface{}) {
 	if len(args) > 0 {
 		switch t := args[0].(type) {
 		case LogLabel:
@@ -189,6 +189,17 @@ func Infof(format string, args ...interface{}) {
 			Label(t).Infof(format, args[1:])
 		default:
 			Instance().Infof(format, args...)
+		}
+	}
+}
+
+func InfofWithoutFile(format string, args ...interface{}) {
+	if len(args) > 0 {
+		switch t := args[0].(type) {
+		case LogLabel:
+			Label(t).WithFields(logrus.Fields{skipCaller: true}).Infof(format, args[1:])
+		default:
+			Instance().WithFields(logrus.Fields{skipCaller: true}).Infof(format, args...)
 		}
 	}
 }
