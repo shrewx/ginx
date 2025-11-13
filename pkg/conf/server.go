@@ -59,10 +59,10 @@ type Discovery struct {
 type I18N struct {
 	// 可支持语言(en/zh)
 	Langs []string `yaml:"langs"`
-	// 配置类型(toml/json)
+	// 配置类型(toml/json/yaml)
 	UnmarshalType string `yaml:"unmarshal_type"`
-	// 配置路径
-	Path string `yaml:"path"`
+	// 配置路径列表（支持多路径）
+	Paths []string `yaml:"paths"`
 }
 
 type Option func(s *Server)

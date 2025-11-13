@@ -83,25 +83,57 @@ func Load(c *conf.I18N) {
 		}
 	}
 
-	if c.Path != "" && pathExist(c.Path) {
-		err := filepath.Walk(c.Path, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
+	// 加载多个路径的文件
+	if len(c.Paths) > 0 {
+		for _, path := range c.Paths {
+			if path != "" && pathExist(path) {
+				err := loadPathFiles(path)
+				if err != nil {
+					panic(fmt.Errorf("load i18n files from path %s fail, err: %s", path, err.Error()))
+				}
 			}
-			if path == c.Path {
-				return nil
-			}
-			bundle.MustLoadMessageFile(path)
-			return nil
-		})
-		if err != nil {
-			panic(fmt.Errorf("load i18n files fail, err: %s", err.Error()))
 		}
 	}
+
 	localize.localizers = make(map[string]*i18n.Localizer)
 	for _, lang := range langs {
 		localize.localizers[lang] = i18n.NewLocalizer(bundle, lang)
 	}
+}
+
+// loadPathFiles 加载指定路径下的所有消息文件
+func loadPathFiles(path string) error {
+	return filepath.Walk(path, func(filePath string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if filePath == path {
+			return nil
+		}
+		if info.IsDir() {
+			return nil
+		}
+		bundle.MustLoadMessageFile(filePath)
+		return nil
+	})
+}
+
+// AddPath 运行时添加单个路径
+func AddPath(path string) error {
+	if !pathExist(path) {
+		return fmt.Errorf("path not exist: %s", path)
+	}
+	return loadPathFiles(path)
+}
+
+// AddPaths 运行时批量添加路径
+func AddPaths(paths []string) error {
+	for _, path := range paths {
+		if err := AddPath(path); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type Localize struct {

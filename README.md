@@ -348,7 +348,7 @@ const (
 2. 错误信息里面，字段是动态的，且也需要I18N
    首先先定义定义一个string类型的常量，使用toolx生成对应的i18n
    ```go
-   //go:generate toolx gen i18n prefix errors.references Field
+   //go:generate toolx gen i18n -p errors.references -c Field
    type Field string
    
    const (
@@ -423,6 +423,15 @@ zh:
       line: 行
 ```
 可以看出，-p参数指定的是i18n的key前缀，使用.表示多级关系
+
+## 日志打印
+系统使用的日志库是logrus库。 目前框架内置了几处答应日志的点
+* 接受到请求后，如果需要答应请求参数，则可以将日志级别设置为debug，日志中就会包含请求参数。
+```text
+time="2025-11-13 16:08:20" level=debug msg="parse GetUserInfo params : &{MethodGet:{} ID:1}"
+```
+如果需要在info级别打印请求参数，则配置文件的show_params设置为true
+
 ## 注释Swagger
 生成swagger文档go常见方式是使用go-swagger库搭配注释的形式，该库同样也是通过注释的形式来实现swagger文档的生成。
 有所不同的是不需要特定的tag说明，而是使用ast库对代码进行所有注释的扫描，并且对响应结果和错误都会进行类型判断。
