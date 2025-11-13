@@ -5,13 +5,21 @@ import (
 )
 
 type Server struct {
-	ID              string `yaml:"id" env:"SERVER_ID"`
-	Name            string `yaml:"name" env:"SERVER_NAME"`
-	Host            string `yaml:"host" env:"SERVER_HOST"`
-	Port            int    `yaml:"port" env:"SERVER_PORT"`
-	Https           bool   `yaml:"https" env:"SERVER_HTTPS"`
-	Release         bool   `yaml:"release" env:"SERVER_RELEASE"`
-	ExitWaitTimeout int    `yaml:"exit_wait_timeout" env:"SERVER_EXIT_WAIT_TIMEOUT"`
+	// 服务ID
+	ID string `yaml:"id" env:"SERVER_ID"`
+	// 服务名称
+	Name string `yaml:"name" env:"SERVER_NAME"`
+	// 服务主机
+	Host string `yaml:"host" env:"SERVER_HOST"`
+	// 服务端口
+	Port int `yaml:"port" env:"SERVER_PORT"`
+	// 是否启用HTTPS
+	Https bool `yaml:"https" env:"SERVER_HTTPS"`
+	// 退出等待超时时间(秒)
+	ExitWaitTimeout int `yaml:"exit_wait_timeout" env:"SERVER_EXIT_WAIT_TIMEOUT"`
+
+	// 是否打印请求参数
+	ShowParams bool `yaml:"show_params" env:"SERVER_SHOW_PARAMS"`
 
 	Log *Log `yaml:"log" env:"SERVER_LOG"`
 

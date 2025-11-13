@@ -13,4 +13,7 @@ type Log struct {
 
 	ToStdout bool `yaml:"to_stdout" env:"LOG_TO_STDOUT"`
 	IsJson   bool `yaml:"is_json" env:"LOG_IS_JSON"`
+	
+	EnableCaller bool `yaml:"enable_caller" env:"LOG_ENABLE_CALLER"`
+	NoStack      bool `yaml:"no_stack" env:"LOG_NO_STACK"`
 }

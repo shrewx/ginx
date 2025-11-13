@@ -3,6 +3,7 @@ package ginx
 import (
 	"fmt"
 	"net/http"
+	"path"
 	"reflect"
 	"sort"
 	"strings"
@@ -218,9 +219,11 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 			return
 		}
 
+		// 显示参数绑定日志
+		showParameterBinding(typeInfo, operator)
+
 		// 执行业务逻辑
 		result, err := operator.Output(ctx)
-		logx.Debugf("parse %s params : %+v", typeInfo.ElemType.Name(), operator)
 		if err != nil {
 			executeErrorHandlers(err, ctx)
 			return
@@ -237,6 +240,14 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 		executeResponseHandlers(ctx, result)
 
 		return
+	}
+}
+
+func showParameterBinding(typeInfo *OperatorTypeInfo, operator Operator) {
+	if showParams {
+		logx.Infof("parse %s params : %+v", typeInfo.ElemType.Name(), operator)
+	} else {
+		logx.Debugf("parse %s params : %+v", typeInfo.ElemType.Name(), operator)
 	}
 }
 
@@ -299,7 +310,12 @@ type RouteInfo struct {
 // collectRoutes 收集所有路由信息
 func collectRoutes(r *GinRouter, parentPath string) []RouteInfo {
 	var routes []RouteInfo
-	currentPath := parentPath + r.basePath
+	basePath := r.basePath
+	if basePath != "" && !strings.HasPrefix(basePath, "/") {
+		basePath = "/" + basePath
+	}
+
+	currentPath := joinPath(parentPath, basePath)
 
 	// 收集当前路由的中间件
 	var middlewares []string
@@ -309,9 +325,12 @@ func collectRoutes(r *GinRouter, parentPath string) []RouteInfo {
 
 	// 如果有处理器，记录路由
 	if r.handleOperator != nil {
+		opPath := r.handleOperator.Path()
+		fullPath := joinPath(currentPath, opPath)
+
 		routes = append(routes, RouteInfo{
 			Method:      strings.ToUpper(r.handleOperator.Method()),
-			Path:        currentPath + r.handleOperator.Path(),
+			Path:        fullPath,
 			Handler:     getOperatorName(r.handleOperator),
 			Middlewares: middlewares,
 		})
@@ -319,11 +338,27 @@ func collectRoutes(r *GinRouter, parentPath string) []RouteInfo {
 
 	// 递归收集子路由
 	for child := range r.children {
-		childRoutes := collectRoutes(child, currentPath)
+		childRoutes := collectRoutes(child, currentPath) // Pass the currentPath for recursion
 		routes = append(routes, childRoutes...)
 	}
 
 	return routes
+}
+
+func joinPath(parent, child string) string {
+	if parent == "" {
+		parent = "/"
+	}
+	if !strings.HasPrefix(parent, "/") {
+		parent = "/" + parent
+	}
+	if child == "" {
+		return path.Clean(parent)
+	}
+	if !strings.HasPrefix(child, "/") {
+		child = "/" + child
+	}
+	return path.Clean(parent + child)
 }
 
 // getOperatorName 获取 Operator 的名称

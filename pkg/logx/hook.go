@@ -19,10 +19,16 @@ const (
 // InfoCallerHook 自动添加调用位置和错误堆栈信息的 Hook
 type InfoCallerHook struct {
 	maxCallerDepth int
+	enableCaller   bool
+	noStack        bool
 }
 
-func NewInfoCallerHook(maxDepth int) *InfoCallerHook {
-	return &InfoCallerHook{maxCallerDepth: maxDepth}
+func NewInfoCallerHook(maxDepth int, enableCaller, noStack bool) *InfoCallerHook {
+	return &InfoCallerHook{
+		maxCallerDepth: maxDepth,
+		enableCaller:   enableCaller,
+		noStack:        noStack,
+	}
 }
 
 // Levels 返回该 Hook 应用的日志级别
@@ -33,16 +39,18 @@ func (h *InfoCallerHook) Levels() []logrus.Level {
 // Fire 在日志输出前执行，添加调用位置和错误堆栈信息
 func (h *InfoCallerHook) Fire(entry *logrus.Entry) error {
 	// 检查 entry.Data 中是否有 error 字段
-	if err, ok := entry.Data[logrus.ErrorKey].(error); ok {
+	_, skipCall := entry.Data[skipCaller]
+	if skipCall {
+		delete(entry.Data, skipCaller)
+	}
+	if err, ok := entry.Data[logrus.ErrorKey].(error); ok && !h.noStack {
 		if stack := h.getErrorStack(err); stack != "" {
 			entry.Data[stackField] = stack
 		}
-	} else if call := h.getCaller(); call != "" {
-		if _, skip := entry.Data[skipCaller]; skip {
-			delete(entry.Data, skipCaller)
-			return nil
+	} else if h.enableCaller && !skipCall {
+		if call := h.getCaller(); call != "" {
+			entry.Data[fileField] = call
 		}
-		entry.Data[fileField] = call
 	}
 
 	return nil

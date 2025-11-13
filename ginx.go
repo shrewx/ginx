@@ -32,6 +32,8 @@ var (
 		i18nLang: I18nZH,
 		once:     sync.Once{},
 	}
+
+	showParams bool
 )
 
 type Ginx struct {
@@ -99,11 +101,9 @@ func RunServer(config *conf.Server, r *GinRouter) {
 	if config == nil {
 		config = conf.NewOptions()
 	}
+	
+	showParams = config.ShowParams
 
-	// release mode
-	if config.Release {
-		gin.SetMode(gin.ReleaseMode)
-	}
 	// init log
 	if config.Log == nil {
 		config.Log = &conf.Log{
