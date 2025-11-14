@@ -45,7 +45,7 @@ type Client struct {
 	Timeout  time.Duration
 }
 
-func (f *Client) Invoke(ctx context.Context, req interface{}) (Response, error) {
+func (f *Client) Invoke(ctx context.Context, req interface{}) (ResponseBind, error) {
 	request, ok := req.(*http.Request)
 	if !ok {
 		request2, err := f.newRequest(ctx, req)

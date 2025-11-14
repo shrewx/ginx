@@ -208,9 +208,8 @@ func TestRunServer(t *testing.T) {
 
 	// 创建配置
 	config := &conf.Server{
-		Host:    "localhost",
-		Port:    0, // 使用随机端口
-		Release: false,
+		Host: "localhost",
+		Port: 0, // 使用随机端口
 	}
 
 	// 在goroutine中运行服务器

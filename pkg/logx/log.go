@@ -1,7 +1,6 @@
 package logx
 
 import (
-	"fmt"
 	"github.com/sirupsen/logrus"
 	"runtime/debug"
 	"strings"
@@ -67,7 +66,6 @@ func setLogLevel(logger *logrus.Logger, level string) {
 	case "panic":
 		logger.SetLevel(logrus.PanicLevel)
 	default:
-		fmt.Println("log level error, use default info level")
 		logger.SetLevel(logrus.InfoLevel)
 	}
 }

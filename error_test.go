@@ -2,7 +2,6 @@ package ginx
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,922 +9,604 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 	e2 "github.com/shrewx/ginx/internal/errors"
-	"github.com/shrewx/ginx/pkg/conf"
-	"github.com/shrewx/ginx/pkg/i18nx"
 	"github.com/shrewx/ginx/pkg/statuserror"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestExecuteErrorHandlers(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	i18nx.Load(&conf.I18N{Langs: []string{"zh", "en"}})
+func TestDefaultErrorResponse(t *testing.T) {
+	err := errors.New("test error")
+	status := http.StatusBadRequest
+	body := []byte(`{"error":"test"}`)
+	headers := http.Header{
+		"X-Custom": []string{"value"},
+	}
+	contentType := "application/json"
+	errorCode := int64(400000001)
+	message := "test message"
 
-	tests := []struct {
-		name           string
-		err            error
-		expectedStatus int
-		validate       func(*testing.T, *httptest.ResponseRecorder)
-	}{
-		{
-			name: "StatusErr error",
-			err: &statuserror.StatusErr{
-				K:         "TEST_ERROR",
-				ErrorCode: http.StatusBadRequest,
-				Message:   "Test error message",
-			},
-			expectedStatus: http.StatusBadRequest,
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				var errorResp map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &errorResp)
-				assert.NoError(t, err)
-				assert.Equal(t, "TEST_ERROR", errorResp["key"])
-			},
-		},
-		{
-			name:           "CommonError BadRequest",
-			err:            e2.BadRequest,
-			expectedStatus: http.StatusBadRequest,
-		},
-		{
-			name:           "CommonError InternalServerError",
-			err:            e2.InternalServerError,
-			expectedStatus: http.StatusInternalServerError,
-		},
-		{
-			name:           "generic error",
-			err:            fmt.Errorf("generic error"),
-			expectedStatus: http.StatusUnprocessableEntity,
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				var errorResp map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &errorResp)
-				assert.NoError(t, err)
-				// Generic error should return InternalServerError message
-				assert.Contains(t, errorResp, "message")
-			},
-		},
+	resp := &defaultErrorResponse{
+		err:         err,
+		status:      status,
+		body:        body,
+		headers:     headers,
+		contentType: contentType,
+		errorCode:   errorCode,
+		message:     message,
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			w := httptest.NewRecorder()
-			ctx, _ := gin.CreateTestContext(w)
-			ctx.Request = httptest.NewRequest("GET", "/test", nil)
-
-			executeErrorHandlers(tt.err, ctx)
-
-			assert.Equal(t, tt.expectedStatus, w.Code)
-
-			if tt.validate != nil {
-				tt.validate(t, w)
-			}
-		})
-	}
+	assert.Equal(t, err, resp.Error())
+	assert.Equal(t, status, resp.Status())
+	assert.Equal(t, body, resp.Body())
+	assert.Equal(t, headers, resp.Headers())
+	assert.Equal(t, contentType, resp.ContentType())
+	assert.Equal(t, errorCode, resp.ErrorCode())
+	assert.Equal(t, message, resp.Message())
 }
 
-func TestStatusErrorI18nResponse(t *testing.T) {
+func TestDefaultErrorHandlerImpl_Handle_ClientResponseError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-
-	// Ensure i18n bundle and generated fields are loaded
-	i18nx.Load(&conf.I18N{Langs: []string{"zh", "en"}})
-
-	tests := []struct {
-		name           string
-		langHeader     string
-		expectedStatus int
-		expectedKey    string
-		expectedCode   int64
-		expectedMsg    string
-	}{
-		{
-			name:           "BadRequest default(no header)",
-			langHeader:     "",
-			expectedStatus: http.StatusBadRequest,
-			expectedKey:    "BadRequest",
-			expectedCode:   e2.BadRequest.Code(),
-			expectedMsg:    "请求参数错误",
-		},
-		{
-			name:           "BadRequest zh",
-			langHeader:     "zh",
-			expectedStatus: http.StatusBadRequest,
-			expectedKey:    "BadRequest",
-			expectedCode:   e2.BadRequest.Code(),
-			expectedMsg:    "请求参数错误",
-		},
-		{
-			name:           "BadRequest en",
-			langHeader:     "en",
-			expectedStatus: http.StatusBadRequest,
-			expectedKey:    "BadRequest",
-			expectedCode:   e2.BadRequest.Code(),
-			expectedMsg:    "bad request",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			w := httptest.NewRecorder()
-
-			ctx, _ := gin.CreateTestContext(w)
-			ctx.Request = httptest.NewRequest("GET", "/test", nil)
-			ctx.Request.Header.Set(LangHeader, tt.langHeader)
-
-			executeErrorHandlers(e2.BadRequest, ctx)
-
-			assert.Equal(t, tt.expectedStatus, w.Code)
-
-			// The response should be the BadRequest error object (StatusErr)
-			// Since defaultBadRequestFormatter returns the localized error object
-			body := w.Body.String()
-			assert.Contains(t, body, tt.expectedKey)
-			assert.Contains(t, body, fmt.Sprintf("%d", tt.expectedCode))
-			assert.Contains(t, body, tt.expectedMsg)
-		})
-	}
-}
-
-// TestAbortWithStatusPureJSON tests the abortWithStatusPureJSON function
-func TestAbortWithStatusPureJSON(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	tests := []struct {
-		name     string
-		code     int
-		jsonObj  interface{}
-		validate func(*testing.T, *httptest.ResponseRecorder)
-	}{
-		{
-			name:    "simple object",
-			code:    http.StatusBadRequest,
-			jsonObj: map[string]string{"error": "test"},
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				assert.Equal(t, http.StatusBadRequest, w.Code)
-				var resp map[string]string
-				err := json.Unmarshal(w.Body.Bytes(), &resp)
-				assert.NoError(t, err)
-				assert.Equal(t, "test", resp["error"])
-			},
-		},
-		{
-			name:    "complex object",
-			code:    http.StatusInternalServerError,
-			jsonObj: map[string]interface{}{"code": 500, "message": "internal error", "details": []string{"detail1", "detail2"}},
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				assert.Equal(t, http.StatusInternalServerError, w.Code)
-				var resp map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &resp)
-				assert.NoError(t, err)
-				assert.Equal(t, float64(500), resp["code"])
-				assert.Equal(t, "internal error", resp["message"])
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			w := httptest.NewRecorder()
-			ctx, _ := gin.CreateTestContext(w)
-			ctx.Request = httptest.NewRequest("GET", "/test", nil)
-
-			abortWithStatusPureJSON(ctx, tt.code, tt.jsonObj)
-
-			if tt.validate != nil {
-				tt.validate(t, w)
-			}
-		})
-	}
-}
-
-// resetDefaultFormatterConfig 重置默认格式化配置，用于测试
-func resetDefaultFormatterConfig() {
-	defaultFormatterConfig = ErrorFormatterConfig{
-		FormatError: func(err i18nx.I18nMessage) interface{} {
-			return err
-		},
-		FormatCode: func(code int64) int {
-			statusCode := statuserror.StatusCodeFromCode(code)
-			if statusCode < 400 {
-				statusCode = http.StatusUnprocessableEntity
-			}
-			return statusCode
-		},
-		FormatBadRequest: func(err i18nx.I18nMessage) interface{} {
-			// 返回本地化后的错误对象，而不是原始的 StatusError
-			return err
-		},
-		FormatInternalServerError: func(err i18nx.I18nMessage) interface{} {
-			// 返回本地化后的错误对象，而不是原始的 StatusError
-			return err
-		},
-	}
-}
-
-// TestConfigureErrorFormatter tests the ConfigureErrorFormatter function
-func TestConfigureErrorFormatter(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	i18nx.Load(&conf.I18N{Langs: []string{"zh", "en"}})
-
-	// 确保测试后重置
-	defer resetDefaultFormatterConfig()
-
-	tests := []struct {
-		name           string
-		config         ErrorFormatterConfig
-		err            error
-		expectedStatus int
-		validate       func(*testing.T, *httptest.ResponseRecorder)
-	}{
-		{
-			name: "configure FormatError",
-			config: ErrorFormatterConfig{
-				FormatError: func(err i18nx.I18nMessage) interface{} {
-					return map[string]interface{}{
-						"custom_error": true,
-						"message":      err,
-					}
-				},
-			},
-			err: &statuserror.StatusErr{
-				K:         "TEST_ERROR",
-				ErrorCode: 40000000001,
-				Message:   "Test error",
-			},
-			expectedStatus: http.StatusBadRequest,
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				var errorResp map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &errorResp)
-				assert.NoError(t, err)
-				assert.True(t, errorResp["custom_error"].(bool))
-			},
-		},
-		{
-			name: "configure FormatCode",
-			config: ErrorFormatterConfig{
-				FormatCode: func(code int64) int {
-					return 200 // Always return 200 for testing
-				},
-			},
-			err:            e2.BadRequest,
-			expectedStatus: 200,
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				// 状态码应该是 200
-				assert.Equal(t, 200, w.Code)
-			},
-		},
-		{
-			name: "configure FormatBadRequest",
-			config: ErrorFormatterConfig{
-				FormatBadRequest: func(err i18nx.I18nMessage) interface{} {
-					return map[string]interface{}{
-						"bad_request": true,
-						"message":     err,
-					}
-				},
-			},
-			err:            e2.BadRequest,
-			expectedStatus: http.StatusBadRequest,
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				var errorResp map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &errorResp)
-				assert.NoError(t, err)
-				assert.True(t, errorResp["bad_request"].(bool))
-			},
-		},
-		{
-			name: "configure FormatInternalServerError",
-			config: ErrorFormatterConfig{
-				FormatInternalServerError: func(err i18nx.I18nMessage) interface{} {
-					return map[string]interface{}{
-						"internal_error": true,
-						"message":        err,
-					}
-				},
-			},
-			err:            e2.InternalServerError,
-			expectedStatus: http.StatusInternalServerError,
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				var errorResp map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &errorResp)
-				assert.NoError(t, err)
-				assert.True(t, errorResp["internal_error"].(bool))
-			},
-		},
-		{
-			name: "configure all formatters",
-			config: ErrorFormatterConfig{
-				FormatError: func(err i18nx.I18nMessage) interface{} {
-					return map[string]interface{}{
-						"custom_error": true,
-						"message":      err,
-					}
-				},
-				FormatCode: func(code int64) int {
-					return 200
-				},
-				FormatBadRequest: func(err i18nx.I18nMessage) interface{} {
-					return map[string]interface{}{
-						"custom_bad_request": true,
-						"message":            err,
-					}
-				},
-				FormatInternalServerError: func(err i18nx.I18nMessage) interface{} {
-					return map[string]interface{}{
-						"custom_internal_error": true,
-						"message":               err,
-					}
-				},
-			},
-			err:            e2.BadRequest,
-			expectedStatus: 200,
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				body := w.Body.String()
-				assert.Contains(t, body, "custom_bad_request")
-			},
-		},
-		{
-			name: "configure partial formatters",
-			config: ErrorFormatterConfig{
-				FormatError: func(err i18nx.I18nMessage) interface{} {
-					return map[string]interface{}{"error": err.Value()}
-				},
-				// FormatCode 不设置，使用默认值
-			},
-			err: &statuserror.StatusErr{
-				K:         "TEST_ERROR",
-				ErrorCode: 40000000001,
-				Message:   "Test error",
-			},
-			expectedStatus: http.StatusBadRequest, // 使用默认 FormatCode
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				var errorResp map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &errorResp)
-				assert.NoError(t, err)
-				assert.Equal(t, "Test error", errorResp["error"])
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// 重置配置
-			resetDefaultFormatterConfig()
-
-			// 应用配置
-			ConfigureErrorFormatter(tt.config)
-
-			// 执行测试
-			w := httptest.NewRecorder()
-			ctx, _ := gin.CreateTestContext(w)
-			ctx.Request = httptest.NewRequest("GET", "/test", nil)
-
-			executeErrorHandlers(tt.err, ctx)
-
-			assert.Equal(t, tt.expectedStatus, w.Code)
-
-			if tt.validate != nil {
-				tt.validate(t, w)
-			}
-		})
-	}
-}
-
-// TestExecuteErrorHandlersWithCustomFormatters tests error wrapper with custom formatters
-func TestExecuteErrorHandlersWithCustomFormatters(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	i18nx.Load(&conf.I18N{Langs: []string{"zh", "en"}})
-
-	// 确保测试后重置
-	defer resetDefaultFormatterConfig()
-
-	// 使用 ConfigureErrorFormatter 设置自定义格式化函数
-	ConfigureErrorFormatter(ErrorFormatterConfig{
-		FormatError: func(err i18nx.I18nMessage) interface{} {
-			return map[string]interface{}{
-				"custom_error": true,
-				"message":      err,
-			}
-		},
-		FormatCode: func(code int64) int {
-			return 200 // Always return 200 for testing
-		},
-		FormatBadRequest: func(err i18nx.I18nMessage) interface{} {
-			return map[string]interface{}{
-				"custom_bad_request": true,
-				"message":            err,
-			}
-		},
-		FormatInternalServerError: func(err i18nx.I18nMessage) interface{} {
-			return map[string]interface{}{
-				"custom_internal_error": true,
-				"message":               err,
-			}
-		},
-	})
-
-	tests := []struct {
-		name           string
-		err            error
-		expectedStatus int
-		validate       func(*testing.T, *httptest.ResponseRecorder)
-	}{
-		{
-			name:           "StatusErr with custom formatters",
-			err:            &statuserror.StatusErr{K: "TEST_ERROR", ErrorCode: 40000000001, Message: "Test error"},
-			expectedStatus: 200, // Custom code formatter returns 200
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				var errorResp map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &errorResp)
-				assert.NoError(t, err)
-				assert.True(t, errorResp["custom_error"].(bool))
-			},
-		},
-		{
-			name:           "BadRequest with custom formatters",
-			err:            e2.BadRequest,
-			expectedStatus: 200, // Custom code formatter returns 200
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				body := w.Body.String()
-				assert.Contains(t, body, "custom_bad_request")
-			},
-		},
-		{
-			name:           "InternalServerError with custom formatters",
-			err:            e2.InternalServerError,
-			expectedStatus: 200, // Custom code formatter returns 200
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				body := w.Body.String()
-				assert.Contains(t, body, "custom_internal_error")
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			w := httptest.NewRecorder()
-			ctx, _ := gin.CreateTestContext(w)
-			ctx.Request = httptest.NewRequest("GET", "/test", nil)
-
-			executeErrorHandlers(tt.err, ctx)
-
-			assert.Equal(t, tt.expectedStatus, w.Code)
-
-			if tt.validate != nil {
-				tt.validate(t, w)
-			}
-		})
-	}
-}
-
-// TestExecuteErrorHandlersWithErrorsIs tests the errors.Is functionality
-func TestExecuteErrorHandlersWithErrorsIs(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	i18nx.Load(&conf.I18N{Langs: []string{"zh", "en"}})
-
-	tests := []struct {
-		name           string
-		err            error
-		expectedStatus int
-		validate       func(t *testing.T, w *httptest.ResponseRecorder)
-	}{
-		{
-			name:           "wrapped BadRequest error",
-			err:            errors.Wrap(e2.BadRequest, "wrapped error"),
-			expectedStatus: http.StatusUnprocessableEntity, // Wrapped errors fall through to default case
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				var errorResp map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &errorResp)
-				assert.NoError(t, err)
-				// Should use default InternalServerError formatter for wrapped errors
-				assert.Contains(t, errorResp, "key")
-				assert.Contains(t, errorResp, "code")
-				assert.Contains(t, errorResp, "message")
-			},
-		},
-		{
-			name:           "wrapped InternalServerError",
-			err:            errors.Wrap(e2.InternalServerError, "wrapped error"),
-			expectedStatus: http.StatusUnprocessableEntity, // Wrapped errors fall through to default case
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				var errorResp map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &errorResp)
-				assert.NoError(t, err)
-				// Should use default InternalServerError formatter for wrapped errors
-				assert.Contains(t, errorResp, "key")
-				assert.Contains(t, errorResp, "code")
-				assert.Contains(t, errorResp, "message")
-			},
-		},
-		{
-			name:           "wrapped other CommonError",
-			err:            errors.Wrap(e2.NotFound, "wrapped error"),
-			expectedStatus: http.StatusUnprocessableEntity, // Wrapped errors fall through to default case
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				var errorResp map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &errorResp)
-				assert.NoError(t, err)
-				// Should use default InternalServerError formatter for wrapped errors
-				assert.Contains(t, errorResp, "key")
-				assert.Contains(t, errorResp, "code")
-				assert.Contains(t, errorResp, "message")
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			w := httptest.NewRecorder()
-			ctx, _ := gin.CreateTestContext(w)
-			ctx.Request = httptest.NewRequest("GET", "/test", nil)
-
-			executeErrorHandlers(tt.err, ctx)
-
-			assert.Equal(t, tt.expectedStatus, w.Code)
-
-			if tt.validate != nil {
-				tt.validate(t, w)
-			}
-		})
-	}
-}
-
-// TestExecuteErrorHandlers_ClientResponseError verifies that ClientResponseError is proxied as-is
-func TestExecuteErrorHandlers_ClientResponseError(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	// 构造一个下游错误
-	headers := http.Header{}
-	headers.Set("X-From-Downstream", "yes")
-	headers.Set("Content-Type", "application/problem+json")
-	body := []byte(`{"error":"downstream"}`)
-
-	err := statuserror.NewRemoteHTTPError(418, headers, body, "")
-
 	w := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(w)
 	ctx.Request = httptest.NewRequest("GET", "/test", nil)
 
-	executeErrorHandlers(err, ctx)
+	handler := &defaultErrorHandlerImpl{}
 
-	// 应按原始状态码/头/内容透传
-	assert.Equal(t, 418, w.Code)
-	assert.Equal(t, "yes", w.Header().Get("X-From-Downstream"))
-	assert.Equal(t, "application/problem+json", w.Header().Get("Content-Type"))
-	assert.Equal(t, string(body), w.Body.String())
-}
-
-// TestExecuteErrorHandlers_ClientResponseError_ContentTypeFallback 验证 content-type 的回退逻辑
-func TestExecuteErrorHandlers_ClientResponseError_ContentTypeFallback(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	// 没有 Content-Type 时应回退为 application/json（由实现决定）
-	headers := http.Header{}
-	body := []byte(`{"error":"x"}`)
-
-	err := statuserror.NewRemoteHTTPError(500, headers, body, "")
-
-	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
-	ctx.Request = httptest.NewRequest("GET", "/test", nil)
-
-	executeErrorHandlers(err, ctx)
-
-	assert.Equal(t, 500, w.Code)
-	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
-	assert.Equal(t, string(body), w.Body.String())
-}
-
-// clearRegisteredErrorHandlers 清理注册的错误处理器，用于测试
-// 注意：默认处理器不会注册到列表中，而是作为 fallback 在 executeErrorHandlers 中调用，所以无需特殊处理
-func clearRegisteredErrorHandlers() {
-	registeredErrorHandlers = nil
-}
-
-// 定义自定义错误类型
-type CustomError struct {
-	Message string
-	Code    int
-}
-
-func (e *CustomError) Error() string {
-	return e.Message
-}
-
-// TestRegisterErrorHandler tests the RegisterErrorHandler function
-func TestRegisterErrorHandler(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	i18nx.Load(&conf.I18N{Langs: []string{"zh", "en"}})
-
-	// 确保测试后清理
-	defer clearRegisteredErrorHandlers()
-
-	tests := []struct {
-		name           string
-		setupHandlers  func()
-		err            error
-		expectedStatus int
-		validate       func(*testing.T, *httptest.ResponseRecorder)
-	}{
-		{
-			name: "custom handler handles specific error",
-			setupHandlers: func() {
-				RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
-					if customErr, ok := err.(*CustomError); ok {
-						ctx.JSON(customErr.Code, gin.H{"error": customErr.Message, "custom": true})
-						return true
-					}
-					return false
-				})
-			},
-			err:            &CustomError{Message: "custom error", Code: 400},
-			expectedStatus: 400,
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				var resp map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &resp)
-				assert.NoError(t, err)
-				assert.Equal(t, "custom error", resp["error"])
-				assert.True(t, resp["custom"].(bool))
-			},
-		},
-		{
-			name: "handler returns false falls through to default",
-			setupHandlers: func() {
-				RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
-					// 不处理任何错误，返回 false
-					return false
-				})
-			},
-			err:            e2.BadRequest,
-			expectedStatus: http.StatusBadRequest,
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				// 应该使用默认的 BadRequest 处理逻辑
-				body := w.Body.String()
-				assert.Contains(t, body, "BadRequest")
-			},
-		},
-		{
-			name: "multiple handlers execute in order",
-			setupHandlers: func() {
-				// 第一个处理器：不处理
-				RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
-					return false
-				})
-				// 第二个处理器：处理 CustomError
-				RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
-					if customErr, ok := err.(*CustomError); ok {
-						ctx.JSON(422, gin.H{"handled_by": "second", "error": customErr.Message})
-						return true
-					}
-					return false
-				})
-			},
-			err:            &CustomError{Message: "test", Code: 400},
-			expectedStatus: 422,
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				var resp map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &resp)
-				assert.NoError(t, err)
-				assert.Equal(t, "second", resp["handled_by"])
-			},
-		},
-		{
-			name: "handler returns true stops execution",
-			setupHandlers: func() {
-				// 第一个处理器：处理并返回 true
-				RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
-					if _, ok := err.(*CustomError); ok {
-						ctx.JSON(200, gin.H{"handled_by": "first"})
-						return true
-					}
-					return false
-				})
-				// 第二个处理器：不应该被执行
-				RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
-					ctx.JSON(500, gin.H{"handled_by": "second"})
-					return true
-				})
-			},
-			err:            &CustomError{Message: "test", Code: 400},
-			expectedStatus: 200,
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				var resp map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &resp)
-				assert.NoError(t, err)
-				assert.Equal(t, "first", resp["handled_by"])
-				// 确保第二个处理器没有被执行
-				assert.NotEqual(t, "second", resp["handled_by"])
-			},
-		},
-		{
-			name: "no handlers registered uses default",
-			setupHandlers: func() {
-				// 不注册任何处理器
-			},
-			err:            e2.BadRequest,
-			expectedStatus: http.StatusBadRequest,
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				// 应该使用默认处理逻辑
-				body := w.Body.String()
-				assert.Contains(t, body, "BadRequest")
-			},
-		},
-		{
-			name: "handler handles StatusErr",
-			setupHandlers: func() {
-				RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
-					if statusErr, ok := err.(*statuserror.StatusErr); ok && statusErr.K == "CUSTOM_STATUS_ERR" {
-						ctx.JSON(403, gin.H{"custom_status": true, "key": statusErr.K})
-						return true
-					}
-					return false
-				})
-			},
-			err: &statuserror.StatusErr{
-				K:         "CUSTOM_STATUS_ERR",
-				ErrorCode: 40000000001,
-				Message:   "custom status error",
-			},
-			expectedStatus: 403,
-			validate: func(t *testing.T, w *httptest.ResponseRecorder) {
-				var resp map[string]interface{}
-				err := json.Unmarshal(w.Body.Bytes(), &resp)
-				assert.NoError(t, err)
-				assert.True(t, resp["custom_status"].(bool))
-				assert.Equal(t, "CUSTOM_STATUS_ERR", resp["key"])
-			},
-		},
+	// 创建 ClientResponseError
+	headers := http.Header{
+		"X-Custom-Header": []string{"custom-value"},
 	}
+	body := []byte(`{"error":"downstream error"}`)
+	clientErr := statuserror.NewRemoteHTTPError(
+		http.StatusBadGateway,
+		headers,
+		body,
+		"application/json",
+	)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// 清理之前的注册
-			clearRegisteredErrorHandlers()
+	handled, resp := handler.Handle(ctx, clientErr)
 
-			// 设置处理器
-			tt.setupHandlers()
-
-			// 执行测试
-			w := httptest.NewRecorder()
-			ctx, _ := gin.CreateTestContext(w)
-			ctx.Request = httptest.NewRequest("GET", "/test", nil)
-
-			executeErrorHandlers(tt.err, ctx)
-
-			assert.Equal(t, tt.expectedStatus, w.Code)
-
-			if tt.validate != nil {
-				tt.validate(t, w)
-			}
-		})
-	}
+	assert.True(t, handled)
+	require.NotNil(t, resp)
+	assert.Equal(t, http.StatusBadGateway, resp.Status())
+	assert.Equal(t, body, resp.Body())
+	assert.Equal(t, headers, resp.Headers())
+	assert.Equal(t, "application/json", resp.ContentType())
 }
 
-// TestRegisterErrorHandler_NilHandler tests that nil handlers are ignored
-func TestRegisterErrorHandler_NilHandler(t *testing.T) {
+func TestDefaultErrorHandlerImpl_Handle_CommonError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	i18nx.Load(&conf.I18N{Langs: []string{"zh", "en"}})
-
-	// 确保测试后清理
-	defer clearRegisteredErrorHandlers()
-
-	// 注册一个有效的处理器
-	handlerCalled := false
-	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
-		handlerCalled = true
-		return false
-	})
-
-	// 尝试注册 nil 处理器
-	RegisterErrorHandler(nil)
-
-	// 验证注册的处理器数量
-	assert.Equal(t, 1, len(registeredErrorHandlers))
-
-	// 验证处理器仍然可以正常工作
 	w := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(w)
 	ctx.Request = httptest.NewRequest("GET", "/test", nil)
 
-	executeErrorHandlers(fmt.Errorf("test error"), ctx)
+	handler := &defaultErrorHandlerImpl{}
 
-	// 验证处理器被调用了
-	assert.True(t, handlerCalled)
-}
+	// 创建 CommonError (StatusErr)
+	commonErr := statuserror.NewStatusErr("TEST_ERROR", 400000001)
+	commonErr.Message = "Test error message"
 
-// TestRegisterErrorHandler_MultipleHandlersOrder tests that handlers execute in registration order
-func TestRegisterErrorHandler_MultipleHandlersOrder(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	i18nx.Load(&conf.I18N{Langs: []string{"zh", "en"}})
+	handled, resp := handler.Handle(ctx, commonErr)
 
-	// 确保测试后清理
-	defer clearRegisteredErrorHandlers()
+	assert.True(t, handled)
+	require.NotNil(t, resp)
+	assert.Equal(t, http.StatusBadRequest, resp.Status())
+	assert.Equal(t, int64(400000001), resp.ErrorCode())
+	assert.Equal(t, "application/json", resp.ContentType())
 
-	executionOrder := make([]int, 0)
-
-	// 注册多个处理器，记录执行顺序
-	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
-		executionOrder = append(executionOrder, 1)
-		return false
-	})
-
-	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
-		executionOrder = append(executionOrder, 2)
-		return false
-	})
-
-	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
-		executionOrder = append(executionOrder, 3)
-		return false
-	})
-
-	// 执行错误处理
-	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
-	ctx.Request = httptest.NewRequest("GET", "/test", nil)
-
-	executeErrorHandlers(fmt.Errorf("test error"), ctx)
-
-	// 验证执行顺序：用户处理器按顺序执行
-	assert.Equal(t, []int{1, 2, 3}, executionOrder)
-	// 验证默认处理器在最后执行（通过状态码验证，默认处理器会返回 422）
-	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
-}
-
-// TestRegisterErrorHandler_HandlerStopsChain tests that returning true stops the chain
-func TestRegisterErrorHandler_HandlerStopsChain(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	i18nx.Load(&conf.I18N{Langs: []string{"zh", "en"}})
-
-	// 确保测试后清理
-	defer clearRegisteredErrorHandlers()
-
-	executionOrder := make([]int, 0)
-
-	// 注册多个处理器
-	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
-		executionOrder = append(executionOrder, 1)
-		return false
-	})
-
-	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
-		executionOrder = append(executionOrder, 2)
-		ctx.JSON(200, gin.H{"stopped": true})
-		return true // 停止执行
-	})
-
-	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
-		executionOrder = append(executionOrder, 3)
-		return false
-	})
-
-	// 执行错误处理
-	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
-	ctx.Request = httptest.NewRequest("GET", "/test", nil)
-
-	executeErrorHandlers(fmt.Errorf("test error"), ctx)
-
-	// 验证只有前两个处理器被执行（第三个处理器和默认处理器都不会执行）
-	assert.Equal(t, []int{1, 2}, executionOrder)
-	assert.Equal(t, 200, w.Code)
-
-	var resp map[string]interface{}
-	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	// 验证响应体是有效的 JSON
+	var bodyMap map[string]interface{}
+	err := json.Unmarshal(resp.Body(), &bodyMap)
 	assert.NoError(t, err)
-	assert.True(t, resp["stopped"].(bool))
 }
 
-// TestDefaultHandlerAlwaysLast tests that default handler always executes last
-func TestDefaultHandlerAlwaysLast(t *testing.T) {
+func TestDefaultErrorHandlerImpl_Handle_CommonError_WithLowStatusCode(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	i18nx.Load(&conf.I18N{Langs: []string{"zh", "en"}})
-
-	// 确保测试后清理
-	defer clearRegisteredErrorHandlers()
-
-	executionOrder := make([]string, 0)
-
-	// 注册用户处理器，都返回 false
-	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
-		executionOrder = append(executionOrder, "user_handler_1")
-		return false
-	})
-
-	RegisterErrorHandlerFunc(func(err error, ctx *gin.Context) bool {
-		executionOrder = append(executionOrder, "user_handler_2")
-		return false
-	})
-
-	// 执行错误处理
 	w := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(w)
 	ctx.Request = httptest.NewRequest("GET", "/test", nil)
 
-	executeErrorHandlers(e2.BadRequest, ctx)
+	handler := &defaultErrorHandlerImpl{}
 
-	// 验证用户处理器先执行
-	assert.Equal(t, []string{"user_handler_1", "user_handler_2"}, executionOrder)
-	// 验证默认处理器在最后执行（通过状态码和响应内容验证）
+	// 创建一个状态码小于 400 的错误码（例如 200000001）
+	// 这种情况下应该使用 http.StatusUnprocessableEntity
+	commonErr := statuserror.NewStatusErr("TEST_ERROR", 200000001)
+	commonErr.Message = "Test error message"
+
+	handled, resp := handler.Handle(ctx, commonErr)
+
+	assert.True(t, handled)
+	require.NotNil(t, resp)
+	// 状态码应该被修正为 422
+	assert.Equal(t, http.StatusUnprocessableEntity, resp.Status())
+	assert.Equal(t, int64(200000001), resp.ErrorCode())
+}
+
+func TestDefaultErrorHandlerImpl_Handle_UnknownError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest("GET", "/test", nil)
+
+	handler := &defaultErrorHandlerImpl{}
+
+	// 创建一个未知类型的错误
+	unknownErr := errors.New("unknown error")
+
+	handled, resp := handler.Handle(ctx, unknownErr)
+
+	assert.True(t, handled)
+	require.NotNil(t, resp)
+	assert.Equal(t, http.StatusInternalServerError, resp.Status())
+	assert.Equal(t, int64(500000000), resp.ErrorCode())
+	assert.Equal(t, "application/json", resp.ContentType())
+
+	// 验证响应体是有效的 JSON
+	var bodyMap map[string]interface{}
+	err := json.Unmarshal(resp.Body(), &bodyMap)
+	assert.NoError(t, err)
+}
+
+func TestRegisterErrorHandler(t *testing.T) {
+	// 保存原始状态
+	originalHandlers := make([]ErrorHandler, len(registeredErrorHandlers))
+	copy(originalHandlers, registeredErrorHandlers)
+
+	// 清理注册的处理器
+	registeredErrorHandlers = []ErrorHandler{}
+
+	// 测试注册 nil 处理器（应该被忽略）
+	RegisterErrorHandler(nil)
+	assert.Len(t, registeredErrorHandlers, 0)
+
+	// 测试注册有效处理器
+	customHandler := &testErrorHandler{shouldHandle: true}
+	RegisterErrorHandler(customHandler)
+	assert.Len(t, registeredErrorHandlers, 1)
+	assert.Equal(t, customHandler, registeredErrorHandlers[0])
+
+	// 测试注册多个处理器
+	customHandler2 := &testErrorHandler{shouldHandle: false}
+	RegisterErrorHandler(customHandler2)
+	assert.Len(t, registeredErrorHandlers, 2)
+
+	// 恢复原始状态
+	registeredErrorHandlers = originalHandlers
+}
+
+// testErrorHandler 用于测试的自定义错误处理器
+type testErrorHandler struct {
+	shouldHandle bool
+	response     ErrorResponse
+}
+
+func (h *testErrorHandler) Handle(ctx *gin.Context, err error) (bool, ErrorResponse) {
+	if h.shouldHandle {
+		return true, h.response
+	}
+	return false, nil
+}
+
+func TestDefaultFormatterImpl_Match(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest("GET", "/test", nil)
+
+	formatter := &defaultFormatterImpl{}
+
+	// Match 应该总是返回 true
+	assert.True(t, formatter.Match(ctx, errors.New("test")))
+	assert.True(t, formatter.Match(ctx, nil))
+}
+
+func TestDefaultFormatterImpl_Format(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest("GET", "/test", nil)
+
+	formatter := &defaultFormatterImpl{}
+
+	err := errors.New("test")
+	status := http.StatusBadRequest
+	body := []byte(`{"error":"test"}`)
+	headers := http.Header{"X-Test": []string{"value"}}
+	contentType := "application/json"
+
+	response := &defaultErrorResponse{
+		err:         err,
+		status:      status,
+		body:        body,
+		headers:     headers,
+		contentType: contentType,
+	}
+
+	statusCode, ct, b, h := formatter.Format(ctx, response)
+
+	assert.Equal(t, status, statusCode)
+	assert.Equal(t, contentType, ct)
+	assert.Equal(t, body, b)
+	assert.Equal(t, headers, h)
+}
+
+func TestExecuteErrorHandlers_WithRegisteredHandler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest("GET", "/test", nil)
+	ctx.Set(OperationName, "test-operation")
+
+	// 保存原始状态
+	originalHandlers := make([]ErrorHandler, len(registeredErrorHandlers))
+	copy(originalHandlers, registeredErrorHandlers)
+	originalFormatters := make([]ResponseFormatter, len(registeredResponseFormatters))
+	copy(originalFormatters, registeredResponseFormatters)
+
+	// 清理
+	registeredErrorHandlers = []ErrorHandler{}
+	registeredResponseFormatters = []ResponseFormatter{}
+
+	// 注册自定义错误处理器
+	customResponse := &defaultErrorResponse{
+		err:         errors.New("custom"),
+		status:      http.StatusTeapot,
+		body:        []byte(`{"custom":"error"}`),
+		headers:     http.Header{"X-Custom": []string{"value"}},
+		contentType: "application/json",
+	}
+
+	customHandler := &testErrorHandler{
+		shouldHandle: true,
+		response:     customResponse,
+	}
+	RegisterErrorHandler(customHandler)
+
+	// 执行错误处理
+	testErr := errors.New("test error")
+	executeErrorHandlers(testErr, ctx)
+
+	// 验证响应
+	assert.Equal(t, http.StatusTeapot, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	assert.Contains(t, w.Body.String(), "custom")
+
+	// 恢复原始状态
+	registeredErrorHandlers = originalHandlers
+	registeredResponseFormatters = originalFormatters
+}
+
+func TestExecuteErrorHandlers_WithDefaultHandler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest("GET", "/test", nil)
+	ctx.Set(OperationName, "test-operation")
+
+	// 保存原始状态
+	originalHandlers := make([]ErrorHandler, len(registeredErrorHandlers))
+	copy(originalHandlers, registeredErrorHandlers)
+	originalFormatters := make([]ResponseFormatter, len(registeredResponseFormatters))
+	copy(originalFormatters, registeredResponseFormatters)
+
+	// 清理
+	registeredErrorHandlers = []ErrorHandler{}
+	registeredResponseFormatters = []ResponseFormatter{}
+
+	// 使用 CommonError，应该被默认处理器处理
+	commonErr := statuserror.NewStatusErr("TEST_ERROR", 400000001)
+	commonErr.Message = "Test error"
+
+	executeErrorHandlers(commonErr, ctx)
+
+	// 验证响应
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	body := w.Body.String()
-	assert.Contains(t, body, "BadRequest")
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+	// 恢复原始状态
+	registeredErrorHandlers = originalHandlers
+	registeredResponseFormatters = originalFormatters
+}
+
+func TestExecuteErrorHandlers_WithRegisteredFormatter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest("GET", "/test", nil)
+	ctx.Set(OperationName, "test-operation")
+
+	// 保存原始状态
+	originalHandlers := make([]ErrorHandler, len(registeredErrorHandlers))
+	copy(originalHandlers, registeredErrorHandlers)
+	originalFormatters := make([]ResponseFormatter, len(registeredResponseFormatters))
+	copy(originalFormatters, registeredResponseFormatters)
+
+	// 清理
+	registeredErrorHandlers = []ErrorHandler{}
+	registeredResponseFormatters = []ResponseFormatter{}
+
+	// 注册自定义格式化器
+	customFormatter := &testResponseFormatter{
+		shouldMatch: true,
+		statusCode:  http.StatusAccepted,
+		contentType: "text/plain",
+		body:        []byte("custom formatted"),
+		headers:     http.Header{"X-Formatted": []string{"true"}},
+	}
+	registeredResponseFormatters = append(registeredResponseFormatters, customFormatter)
+
+	testErr := errors.New("test error")
+	executeErrorHandlers(testErr, ctx)
+
+	// 验证使用了自定义格式化器
+	assert.Equal(t, http.StatusAccepted, w.Code)
+	assert.Equal(t, "text/plain", w.Header().Get("Content-Type"))
+	assert.Equal(t, "custom formatted", w.Body.String())
+	assert.Equal(t, "true", w.Header().Get("X-Formatted"))
+
+	// 恢复原始状态
+	registeredErrorHandlers = originalHandlers
+	registeredResponseFormatters = originalFormatters
+}
+
+func TestExecuteErrorHandlers_HandlerReturnsFalse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest("GET", "/test", nil)
+	ctx.Set(OperationName, "test-operation")
+
+	// 保存原始状态
+	originalHandlers := make([]ErrorHandler, len(registeredErrorHandlers))
+	copy(originalHandlers, registeredErrorHandlers)
+	originalFormatters := make([]ResponseFormatter, len(registeredResponseFormatters))
+	copy(originalFormatters, registeredResponseFormatters)
+
+	// 清理
+	registeredErrorHandlers = []ErrorHandler{}
+	registeredResponseFormatters = []ResponseFormatter{}
+
+	// 注册一个返回 false 的处理器（不处理）
+	nonHandlingHandler := &testErrorHandler{
+		shouldHandle: false,
+	}
+	RegisterErrorHandler(nonHandlingHandler)
+
+	// 执行错误处理，应该使用默认处理器
+	testErr := errors.New("test error")
+	executeErrorHandlers(testErr, ctx)
+
+	// 验证使用了默认处理器（返回 500）
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+	// 恢复原始状态
+	registeredErrorHandlers = originalHandlers
+	registeredResponseFormatters = originalFormatters
+}
+
+func TestExecuteErrorHandlers_HandlerReturnsNilResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest("GET", "/test", nil)
+	ctx.Set(OperationName, "test-operation")
+
+	// 保存原始状态
+	originalHandlers := make([]ErrorHandler, len(registeredErrorHandlers))
+	copy(originalHandlers, registeredErrorHandlers)
+	originalFormatters := make([]ResponseFormatter, len(registeredResponseFormatters))
+	copy(originalFormatters, registeredResponseFormatters)
+
+	// 清理
+	registeredErrorHandlers = []ErrorHandler{}
+	registeredResponseFormatters = []ResponseFormatter{}
+
+	// 注册一个返回 true 但 response 为 nil 的处理器
+	// 这种情况应该继续下一个处理器
+	nilResponseHandler := &testErrorHandler{
+		shouldHandle: true,
+		response:     nil, // nil response
+	}
+	RegisterErrorHandler(nilResponseHandler)
+
+	// 执行错误处理，应该继续使用默认处理器
+	testErr := errors.New("test error")
+	executeErrorHandlers(testErr, ctx)
+
+	// 验证使用了默认处理器（返回 500）
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+	// 恢复原始状态
+	registeredErrorHandlers = originalHandlers
+	registeredResponseFormatters = originalFormatters
+}
+
+// testResponseFormatter 用于测试的自定义响应格式化器
+type testResponseFormatter struct {
+	shouldMatch bool
+	statusCode  int
+	contentType string
+	body        []byte
+	headers     http.Header
+}
+
+func (f *testResponseFormatter) Match(ctx *gin.Context, err error) bool {
+	return f.shouldMatch
+}
+
+func (f *testResponseFormatter) Format(ctx *gin.Context, response ErrorResponse) (int, string, []byte, http.Header) {
+	return f.statusCode, f.contentType, f.body, f.headers
+}
+
+func TestAbortWithResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest("GET", "/test", nil)
+
+	statusCode := http.StatusBadRequest
+	contentType := "application/json"
+	body := []byte(`{"error":"test"}`)
+	headers := http.Header{
+		"X-Custom-Header": []string{"custom-value"},
+		"X-Multiple":      []string{"value1", "value2"},
+	}
+
+	abortWithResponse(ctx, statusCode, contentType, body, headers)
+
+	// 验证响应
+	assert.True(t, ctx.IsAborted())
+	assert.Equal(t, statusCode, w.Code)
+	assert.Equal(t, contentType, w.Header().Get("Content-Type"))
+	assert.Equal(t, body, w.Body.Bytes())
+	assert.Equal(t, "custom-value", w.Header().Get("X-Custom-Header"))
+	assert.Equal(t, "value1", w.Header().Get("X-Multiple"))
+}
+
+func TestAbortWithResponse_NilHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest("GET", "/test", nil)
+
+	statusCode := http.StatusOK
+	contentType := "text/plain"
+	body := []byte("test body")
+
+	abortWithResponse(ctx, statusCode, contentType, body, nil)
+
+	// 验证响应
+	assert.True(t, ctx.IsAborted())
+	assert.Equal(t, statusCode, w.Code)
+	assert.Equal(t, contentType, w.Header().Get("Content-Type"))
+	assert.Equal(t, body, w.Body.Bytes())
+}
+
+func TestAbortWithResponse_EmptyHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest("GET", "/test", nil)
+
+	statusCode := http.StatusOK
+	contentType := "text/plain"
+	body := []byte("test body")
+	headers := http.Header{}
+
+	abortWithResponse(ctx, statusCode, contentType, body, headers)
+
+	// 验证响应
+	assert.True(t, ctx.IsAborted())
+	assert.Equal(t, statusCode, w.Code)
+	assert.Equal(t, contentType, w.Header().Get("Content-Type"))
+	assert.Equal(t, body, w.Body.Bytes())
+}
+
+func TestWithStack(t *testing.T) {
+	originalErr := errors.New("original error")
+	wrappedErr := WithStack(originalErr)
+
+	assert.NotNil(t, wrappedErr)
+	// 验证错误被包装了
+	assert.Error(t, wrappedErr)
+	// 验证原始错误信息保留
+	assert.Contains(t, wrappedErr.Error(), "original error")
+}
+
+func TestDefaultErrorHandlerImpl_Handle_CommonError_WithI18n(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest("GET", "/test", nil)
+	ctx.Request.Header.Set(LangHeader, "en")
+
+	handler := &defaultErrorHandlerImpl{}
+
+	// 使用内部错误（有 i18n 支持）
+	internalErr := e2.BadRequest
+
+	handled, resp := handler.Handle(ctx, internalErr)
+
+	assert.True(t, handled)
+	require.NotNil(t, resp)
+	assert.Equal(t, http.StatusBadRequest, resp.Status())
+	assert.Equal(t, "application/json", resp.ContentType())
+
+	// 验证响应体是有效的 JSON
+	var bodyMap map[string]interface{}
+	err := json.Unmarshal(resp.Body(), &bodyMap)
+	assert.NoError(t, err)
+}
+
+func TestExecuteErrorHandlers_WithClientResponseError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest("GET", "/test", nil)
+	ctx.Set(OperationName, "test-operation")
+
+	// 保存原始状态
+	originalHandlers := make([]ErrorHandler, len(registeredErrorHandlers))
+	copy(originalHandlers, registeredErrorHandlers)
+	originalFormatters := make([]ResponseFormatter, len(registeredResponseFormatters))
+	copy(originalFormatters, registeredResponseFormatters)
+
+	// 清理
+	registeredErrorHandlers = []ErrorHandler{}
+	registeredResponseFormatters = []ResponseFormatter{}
+
+	// 使用 ClientResponseError
+	clientErr := statuserror.NewRemoteHTTPError(
+		http.StatusGatewayTimeout,
+		http.Header{"X-Downstream": []string{"error"}},
+		[]byte(`{"downstream":"error"}`),
+		"application/json",
+	)
+
+	executeErrorHandlers(clientErr, ctx)
+
+	// 验证响应
+	assert.Equal(t, http.StatusGatewayTimeout, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	assert.Equal(t, "error", w.Header().Get("X-Downstream"))
+	assert.Contains(t, w.Body.String(), "downstream")
+
+	// 恢复原始状态
+	registeredErrorHandlers = originalHandlers
+	registeredResponseFormatters = originalFormatters
+}
+
+func TestExecuteErrorHandlers_FormatterDoesNotMatch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest("GET", "/test", nil)
+	ctx.Set(OperationName, "test-operation")
+
+	// 保存原始状态
+	originalHandlers := make([]ErrorHandler, len(registeredErrorHandlers))
+	copy(originalHandlers, registeredErrorHandlers)
+	originalFormatters := make([]ResponseFormatter, len(registeredResponseFormatters))
+	copy(originalFormatters, registeredResponseFormatters)
+
+	// 清理
+	registeredErrorHandlers = []ErrorHandler{}
+	registeredResponseFormatters = []ResponseFormatter{}
+
+	// 注册一个不匹配的格式化器
+	nonMatchingFormatter := &testResponseFormatter{
+		shouldMatch: false, // 不匹配
+	}
+	registeredResponseFormatters = append(registeredResponseFormatters, nonMatchingFormatter)
+
+	testErr := errors.New("test error")
+	executeErrorHandlers(testErr, ctx)
+
+	// 验证使用了默认格式化器（返回 500）
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
+	// 恢复原始状态
+	registeredErrorHandlers = originalHandlers
+	registeredResponseFormatters = originalFormatters
 }

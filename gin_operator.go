@@ -105,7 +105,7 @@ func initGinEngine(r *GinRouter, agent *trace.Agent) *gin.Engine {
 	})
 
 	// internal middleware
-	root.Use(gin.Recovery())
+	root.Use(middleware.Recovery())
 	root.Use(middleware.CORS())
 	root.Use(middleware.Telemetry(agent))
 
@@ -129,12 +129,12 @@ func initGinEngine(r *GinRouter, agent *trace.Agent) *gin.Engine {
 
 func loadGinRouters(ir gin.IRouter, r *GinRouter) {
 	if r.children != nil && len(r.children) != 0 {
-		var middleware []gin.HandlerFunc
+		var middlewares []gin.HandlerFunc
 		for _, op := range r.middlewareOperators {
-			middleware = append(middleware, ginMiddlewareWrapper(op))
+			middlewares = append(middlewares, ginMiddlewareWrapper(op))
 		}
 
-		newIRouter := ir.Group(r.basePath, middleware...)
+		newIRouter := ir.Group(r.basePath, middlewares...)
 
 		for child := range r.children {
 			loadGinRouters(newIRouter, child)
@@ -262,6 +262,7 @@ func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
 		middlewareOp, ok := instance.(Operator)
 		if !ok {
 			executeErrorHandlers(e2.InternalServerError, ctx)
+			ctx.Abort()
 			return
 		}
 
@@ -271,21 +272,48 @@ func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
 		// 设置操作名称
 		ctx.Set(OperationName, typeInfo.ElemType.Name())
 
+		// 参数绑定
 		if err := ParameterBinding(ctx, instance, typeInfo); err != nil {
 			logx.Error(err)
 			executeErrorHandlers(err, ctx)
+			ctx.Abort()
 			return
 		}
 
-		result, err := middlewareOp.Output(ctx)
-		if err != nil {
-			executeErrorHandlers(err, ctx)
-			return
-		}
+		switch mw := middlewareOp.(type) {
+		case TypeOperator:
+			result, err := mw.Output(ctx)
+			if err != nil {
+				executeErrorHandlers(err, ctx)
+				ctx.Abort()
+				return
+			}
 
-		// for gin HandlerFunc
-		if handle, ok := result.(gin.HandlerFunc); ok {
-			handle(ctx)
+			// 如果中间件返回了 gin.HandlerFunc，执行它
+			if handle, ok := result.(gin.HandlerFunc); ok {
+				handle(ctx)
+				return
+			}
+
+			// 继续执行后续中间件和处理器
+			ctx.Next()
+		case MiddlewareOperator:
+			// 执行前置处理
+			if err := mw.Before(ctx); err != nil {
+				executeErrorHandlers(err, ctx)
+				ctx.Abort()
+				return
+			}
+
+			// 继续执行后续中间件和处理器
+			ctx.Next()
+
+			// 执行后置处理
+			if err := mw.After(ctx); err != nil {
+				// 后置处理的错误只记录日志，不中断响应（因为响应可能已经发送）
+				logx.Errorf("middleware after error: %v", err)
+			}
+			return
 		}
 
 	}

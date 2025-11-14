@@ -2,7 +2,6 @@ package ginx
 
 import (
 	"context"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -44,10 +43,10 @@ type Header interface {
 }
 
 type Invoker interface {
-	Invoke(ctx context.Context, req interface{}) (Response, error)
+	Invoke(ctx context.Context, req interface{}) (ResponseBind, error)
 }
 
-type Response interface {
+type ResponseBind interface {
 	Bind(interface{}) error
 }
 
@@ -66,6 +65,12 @@ type TypeOperator interface {
 	TypeDescriber
 }
 
+type MiddlewareOperator interface {
+	TypeOperator
+	Before(ctx *gin.Context) error
+	After(ctx *gin.Context) error
+}
+
 type RouterOperator interface {
 	Operator
 	Request
@@ -80,3 +85,5 @@ type GroupOperator interface {
 type EmptyOperator struct{}
 
 func (e *EmptyOperator) Output(ctx *gin.Context) (interface{}, error) { return nil, nil }
+func (e *EmptyOperator) Before(ctx *gin.Context) error                { return nil }
+func (e *EmptyOperator) After(ctx *gin.Context) error                 { return nil }
