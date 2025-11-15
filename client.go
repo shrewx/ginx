@@ -55,9 +55,19 @@ func (f *Client) Invoke(ctx context.Context, req interface{}) (ResponseBind, err
 		request = request2
 	}
 
+	// 从 context 中获取 RequestConfig 并应用到 HTTP 请求
+	if config := getRequestConfigFromContext(ctx); config != nil {
+		applyRequestConfig(request, config)
+	}
+
 	httpClient := ClientFromContext(ctx)
 	if httpClient == nil {
-		httpClient = GetShortConnClientContext(ctx, f.Timeout)
+		timeout := f.Timeout
+		// 如果 RequestConfig 中有 timeout，使用它
+		if config := getRequestConfigFromContext(ctx); config != nil && config.Timeout != nil {
+			timeout = *config.Timeout
+		}
+		httpClient = GetShortConnClientContext(ctx, timeout)
 	}
 
 	resp, err := httpClient.Do(request)
@@ -67,6 +77,41 @@ func (f *Client) Invoke(ctx context.Context, req interface{}) (ResponseBind, err
 	return &Result{
 		Response: resp,
 	}, nil
+}
+
+// requestConfigKey 用于在 context 中存储 RequestConfig
+type requestConfigKey struct{}
+
+// getRequestConfigFromContext 从 context 中获取 RequestConfig
+func getRequestConfigFromContext(ctx context.Context) *requestConfig {
+	if config, ok := ctx.Value(requestConfigKey{}).(*requestConfig); ok {
+		return config
+	}
+	return nil
+}
+
+// requestConfig 存储请求级别的配置
+type requestConfig struct {
+	Headers map[string]string
+	Cookies []*http.Cookie
+	Timeout *time.Duration
+}
+
+// applyRequestConfig 将 RequestConfig 应用到 HTTP 请求
+func applyRequestConfig(req *http.Request, config *requestConfig) {
+	if config == nil {
+		return
+	}
+
+	// 应用 Headers
+	for k, v := range config.Headers {
+		req.Header.Set(k, v)
+	}
+
+	// 应用 Cookies
+	for _, cookie := range config.Cookies {
+		req.AddCookie(cookie)
+	}
 }
 
 func (f *Client) newRequest(ctx context.Context, req interface{}) (*http.Request, error) {

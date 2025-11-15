@@ -12,14 +12,13 @@ import (
 )
 
 type CommonError interface {
-	Error() string
-	Code() int64
+	error
 
+	i18nx.I18nMessage
+
+	Code() int64
 	WithParams(params map[string]interface{}) CommonError
 	WithField(key interface{}, value string) CommonError
-
-	Localize(manager *i18nx.Localize, lang string) i18nx.I18nMessage
-	Value() string
 }
 
 const (

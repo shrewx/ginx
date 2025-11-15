@@ -171,5 +171,11 @@ func (g *ClientGenerator) Output(cwd string) {
 		_, _ = file.WriteFile()
 	}
 
+	{
+		file := codegen.NewFile(pkgName, path.Join(rootPath, "options.go"))
+		NewOptionsGenerator(g.ServiceName, file).Scan()
+		_, _ = file.WriteFile()
+	}
+
 	log.Printf("generated client of %s into %s", g.ServiceName, color.MagentaString(rootPath))
 }
