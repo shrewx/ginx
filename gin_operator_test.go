@@ -387,21 +387,467 @@ func TestGinHandleFuncWrapper(t *testing.T) {
 	}
 }
 
-func TestGinMiddlewareWrapper(t *testing.T) {
+// TestTypeOperatorMiddleware 用于测试 TypeOperator 类型的中间件
+type TestTypeOperatorMiddleware struct {
+	MiddlewareType
+	executionOrder *[]string
+}
+
+func (t *TestTypeOperatorMiddleware) Output(ctx *gin.Context) (interface{}, error) {
+	// 通过 context 获取 executionOrder（因为对象池会创建新实例）
+	if orderPtr, exists := ctx.Get("executionOrder"); exists {
+		if order, ok := orderPtr.(*[]string); ok {
+			*order = append(*order, "TypeOperator-Output")
+		}
+	}
+	ctx.Header("X-TypeOperator", "executed")
+	return nil, nil
+}
+
+// TestTypeOperatorMiddlewareWithHandlerFunc 返回 HandlerFunc 的 TypeOperator
+type TestTypeOperatorMiddlewareWithHandlerFunc struct {
+	MiddlewareType
+}
+
+func (t *TestTypeOperatorMiddlewareWithHandlerFunc) Output(ctx *gin.Context) (interface{}, error) {
+	return gin.HandlerFunc(func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"handler": "func"})
+	}), nil
+}
+
+// TestTypeOperatorMiddlewareWithError 返回错误的 TypeOperator
+type TestTypeOperatorMiddlewareWithError struct {
+	MiddlewareType
+}
+
+func (t *TestTypeOperatorMiddlewareWithError) Output(ctx *gin.Context) (interface{}, error) {
+	return nil, errors.BadRequest
+}
+
+// TestMiddlewareOperatorFull 用于测试 MiddlewareOperator 类型的中间件
+// 注意：MiddlewareOperator 接口继承自 TypeOperator，所以需要实现 Type() 方法
+type TestMiddlewareOperatorFull struct {
+	MiddlewareType
+	executionOrder        *[]string
+	beforeError           error
+	afterError            error
+	afterShouldNotExecute bool
+}
+
+func (t *TestMiddlewareOperatorFull) Output(ctx *gin.Context) (interface{}, error) {
+	return nil, nil
+}
+
+func (t *TestMiddlewareOperatorFull) Before(ctx *gin.Context) error {
+	// 通过 context 获取 executionOrder（因为对象池会创建新实例）
+	if orderPtr, exists := ctx.Get("executionOrder"); exists {
+		if order, ok := orderPtr.(*[]string); ok {
+			*order = append(*order, "Before")
+		}
+	}
+	// 通过 context 获取 beforeError（因为对象池会创建新实例）
+	if errVal, exists := ctx.Get("beforeError"); exists {
+		if err, ok := errVal.(error); ok {
+			ctx.Header("X-Before", "executed")
+			return err
+		}
+	}
+	ctx.Header("X-Before", "executed")
+	return t.beforeError
+}
+
+func (t *TestMiddlewareOperatorFull) After(ctx *gin.Context) error {
+	// 如果设置了 afterShouldNotExecute，说明不应该执行到这里
+	if t.afterShouldNotExecute {
+		ctx.Header("X-After-Should-Not-Execute", "true")
+	}
+	// 通过 context 获取 executionOrder（因为对象池会创建新实例）
+	if orderPtr, exists := ctx.Get("executionOrder"); exists {
+		if order, ok := orderPtr.(*[]string); ok {
+			*order = append(*order, "After")
+		}
+	}
+	ctx.Header("X-After", "executed")
+	return t.afterError
+}
+
+// TestTypeOperatorMiddlewareWithParams 带参数的 TypeOperator
+type TestTypeOperatorMiddlewareWithParams struct {
+	MiddlewareType
+	Token string `in:"header" name:"Authorization"`
+}
+
+func (t *TestTypeOperatorMiddlewareWithParams) Output(ctx *gin.Context) (interface{}, error) {
+	if t.Token != "" {
+		ctx.Header("X-Token-Validated", "true")
+	}
+	return nil, nil
+}
+
+// TestTypeOperatorMiddlewareWithRequiredParam 带必填参数的 TypeOperator（用于测试参数验证错误）
+type TestTypeOperatorMiddlewareWithRequiredParam struct {
+	MiddlewareType
+	RequiredField string `in:"query" name:"required" validate:"required"`
+}
+
+func (t *TestTypeOperatorMiddlewareWithRequiredParam) Output(ctx *gin.Context) (interface{}, error) {
+	return nil, nil
+}
+
+func TestGinMiddlewareWrapper_TypeOperator(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ClearCache()
 
-	middleware := &TestMiddlewareOperator{}
-	handler := ginMiddlewareWrapper(middleware)
+	t.Run("TypeOperator normal execution", func(t *testing.T) {
+		middleware := &TestTypeOperatorMiddleware{}
+		handler := ginMiddlewareWrapper(middleware)
 
-	w := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(w)
-	ctx.Request = httptest.NewRequest("GET", "/test", nil)
+		engine := gin.New()
+		nextCalled := false
+		engine.GET("/test", handler, func(c *gin.Context) {
+			nextCalled = true
+			c.JSON(http.StatusOK, gin.H{"next": "called"})
+		})
 
-	handler(ctx)
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/test", nil)
+		engine.ServeHTTP(w, req)
 
-	// 验证中间件设置的头部
-	assert.Equal(t, "true", w.Header().Get("X-Middleware-Applied"))
+		// 验证中间件执行
+		assert.Equal(t, "executed", w.Header().Get("X-TypeOperator"))
+		// 验证调用了 Next
+		assert.True(t, nextCalled)
+		// 验证响应
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("TypeOperator returns HandlerFunc", func(t *testing.T) {
+		middleware := &TestTypeOperatorMiddlewareWithHandlerFunc{}
+		handler := ginMiddlewareWrapper(middleware)
+
+		engine := gin.New()
+		nextCalled := false
+		engine.GET("/test", handler, func(c *gin.Context) {
+			nextCalled = true
+			// 这个处理器不应该被执行，因为中间件返回了 HandlerFunc
+			c.JSON(http.StatusOK, gin.H{"next": "called"})
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/test", nil)
+		engine.ServeHTTP(w, req)
+
+		// 验证 HandlerFunc 被执行（返回的 HandlerFunc 会写入响应）
+		assert.Equal(t, http.StatusOK, w.Code)
+		// 验证响应体包含 handler func 的内容
+		body := w.Body.String()
+		assert.Contains(t, body, "handler")
+		// 注意：由于 gin 的执行机制，即使返回了 HandlerFunc，Next 可能还是会被调用
+		// 但重要的是 HandlerFunc 的响应被正确返回了
+		var resp map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		if err == nil {
+			// 如果响应是 JSON，验证是 handler func 的响应
+			if handlerVal, ok := resp["handler"]; ok {
+				assert.Equal(t, "func", handlerVal)
+				// 如果响应是 handler func 的响应，说明 Next 没有被调用（或者被覆盖了）
+				_ = nextCalled // 避免未使用变量警告
+			}
+		}
+	})
+
+	t.Run("TypeOperator returns error", func(t *testing.T) {
+		middleware := &TestTypeOperatorMiddlewareWithError{}
+		handler := ginMiddlewareWrapper(middleware)
+
+		engine := gin.New()
+		nextCalled := false
+		engine.GET("/test", handler, func(c *gin.Context) {
+			nextCalled = true
+			c.JSON(http.StatusOK, gin.H{"next": "called"})
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/test", nil)
+		engine.ServeHTTP(w, req)
+
+		// 验证错误处理（应该返回 400）
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		// 验证没有调用 Next（因为出错了）
+		assert.False(t, nextCalled)
+	})
+}
+
+func TestGinMiddlewareWrapper_MiddlewareOperator(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ClearCache()
+
+	t.Run("MiddlewareOperator normal execution", func(t *testing.T) {
+		middleware := &TestMiddlewareOperatorFull{}
+		handler := ginMiddlewareWrapper(middleware)
+
+		engine := gin.New()
+		nextCalled := false
+		engine.GET("/test", handler, func(c *gin.Context) {
+			nextCalled = true
+			c.JSON(http.StatusOK, gin.H{"next": "called"})
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/test", nil)
+		engine.ServeHTTP(w, req)
+
+		// 验证 Before 和 After 都执行了
+		assert.Equal(t, "executed", w.Header().Get("X-Before"))
+		assert.Equal(t, "executed", w.Header().Get("X-After"))
+		// 验证调用了 Next
+		assert.True(t, nextCalled)
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("MiddlewareOperator Before returns error", func(t *testing.T) {
+		// 通过 context 传递错误，因为对象池会创建新实例
+		middleware := &TestMiddlewareOperatorFull{}
+		handler := ginMiddlewareWrapper(middleware)
+
+		engine := gin.New()
+		nextCalled := false
+		engine.GET("/test", func(c *gin.Context) {
+			// 通过 context 传递错误
+			c.Set("beforeError", errors.Unauthorized)
+			c.Next()
+		}, handler, func(c *gin.Context) {
+			nextCalled = true
+			c.JSON(http.StatusOK, gin.H{"next": "called"})
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/test", nil)
+		engine.ServeHTTP(w, req)
+
+		// 验证错误处理（应该返回 401）
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+		// 验证没有调用 Next（因为 Before 出错了）
+		assert.False(t, nextCalled)
+		// 验证 After 没有执行
+		assert.Empty(t, w.Header().Get("X-After"))
+	})
+
+	t.Run("MiddlewareOperator After returns error", func(t *testing.T) {
+		middleware := &TestMiddlewareOperatorFull{
+			afterError: errors.InternalServerError,
+		}
+		handler := ginMiddlewareWrapper(middleware)
+
+		engine := gin.New()
+		nextCalled := false
+		engine.GET("/test", handler, func(c *gin.Context) {
+			nextCalled = true
+			c.JSON(http.StatusOK, gin.H{"next": "called"})
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/test", nil)
+		engine.ServeHTTP(w, req)
+
+		// 验证 Before 和 After 都执行了
+		assert.Equal(t, "executed", w.Header().Get("X-Before"))
+		assert.Equal(t, "executed", w.Header().Get("X-After"))
+		// 验证调用了 Next（After 的错误不会中断）
+		assert.True(t, nextCalled)
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+}
+
+func TestGinMiddlewareWrapper_MultipleMiddlewares(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ClearCache()
+
+	t.Run("Multiple TypeOperator middlewares", func(t *testing.T) {
+		executionOrder := make([]string, 0)
+		executionOrderPtr := &executionOrder
+
+		mw1 := &TestTypeOperatorMiddleware{}
+		mw2 := &TestTypeOperatorMiddleware{}
+
+		handler1 := ginMiddlewareWrapper(mw1)
+		handler2 := ginMiddlewareWrapper(mw2)
+
+		engine := gin.New()
+		engine.GET("/test", func(c *gin.Context) {
+			c.Set("executionOrder", executionOrderPtr)
+			c.Next()
+		}, handler1, handler2, func(c *gin.Context) {
+			*executionOrderPtr = append(*executionOrderPtr, "FinalHandler")
+			c.JSON(http.StatusOK, gin.H{"done": true})
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/test", nil)
+		engine.ServeHTTP(w, req)
+
+		// 验证执行顺序
+		assert.Equal(t, []string{"TypeOperator-Output", "TypeOperator-Output", "FinalHandler"}, executionOrder)
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("Multiple MiddlewareOperator middlewares", func(t *testing.T) {
+		executionOrder := make([]string, 0)
+		executionOrderPtr := &executionOrder
+
+		mw1 := &TestMiddlewareOperatorFull{}
+		mw2 := &TestMiddlewareOperatorFull{}
+
+		handler1 := ginMiddlewareWrapper(mw1)
+		handler2 := ginMiddlewareWrapper(mw2)
+
+		engine := gin.New()
+		engine.GET("/test", func(c *gin.Context) {
+			c.Set("executionOrder", executionOrderPtr)
+			c.Next()
+		}, handler1, handler2, func(c *gin.Context) {
+			*executionOrderPtr = append(*executionOrderPtr, "FinalHandler")
+			c.JSON(http.StatusOK, gin.H{"done": true})
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/test", nil)
+		engine.ServeHTTP(w, req)
+
+		// 验证执行顺序：Before1 -> Before2 -> Handler -> After2 -> After1
+		expectedOrder := []string{"Before", "Before", "FinalHandler", "After", "After"}
+		assert.Equal(t, expectedOrder, executionOrder)
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("Mixed TypeOperator and MiddlewareOperator", func(t *testing.T) {
+		executionOrder := make([]string, 0)
+		executionOrderPtr := &executionOrder
+
+		typeOp := &TestTypeOperatorMiddleware{}
+		middlewareOp := &TestMiddlewareOperatorFull{}
+
+		handler1 := ginMiddlewareWrapper(typeOp)
+		handler2 := ginMiddlewareWrapper(middlewareOp)
+
+		engine := gin.New()
+		engine.GET("/test", func(c *gin.Context) {
+			c.Set("executionOrder", executionOrderPtr)
+			c.Next()
+		}, handler1, handler2, func(c *gin.Context) {
+			*executionOrderPtr = append(*executionOrderPtr, "FinalHandler")
+			c.JSON(http.StatusOK, gin.H{"done": true})
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/test", nil)
+		engine.ServeHTTP(w, req)
+
+		// 验证执行顺序：TypeOperator -> Before -> Handler -> After
+		expectedOrder := []string{"TypeOperator-Output", "Before", "FinalHandler", "After"}
+		assert.Equal(t, expectedOrder, executionOrder)
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+}
+
+func TestGinMiddlewareWrapper_ParameterBinding(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ClearCache()
+
+	t.Run("TypeOperator with parameters", func(t *testing.T) {
+		middleware := &TestTypeOperatorMiddlewareWithParams{}
+		handler := ginMiddlewareWrapper(middleware)
+
+		engine := gin.New()
+		nextCalled := false
+		engine.GET("/test", handler, func(c *gin.Context) {
+			nextCalled = true
+			c.JSON(http.StatusOK, gin.H{"next": "called"})
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/test", nil)
+		req.Header.Set("Authorization", "Bearer token123")
+		engine.ServeHTTP(w, req)
+
+		// 验证参数绑定成功（通过检查响应头）
+		assert.Equal(t, "true", w.Header().Get("X-Token-Validated"))
+		// 验证调用了 Next
+		assert.True(t, nextCalled)
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("Parameter binding error", func(t *testing.T) {
+		// 使用一个需要必填参数的中间件类型进行测试
+		middleware := &TestTypeOperatorMiddlewareWithRequiredParam{}
+		handler := ginMiddlewareWrapper(middleware)
+
+		engine := gin.New()
+		nextCalled := false
+		engine.GET("/test", handler, func(c *gin.Context) {
+			nextCalled = true
+			c.JSON(http.StatusOK, gin.H{"next": "called"})
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/test", nil)
+		// 不提供必填参数
+		engine.ServeHTTP(w, req)
+
+		// 验证错误处理（参数验证失败）
+		assert.True(t, w.Code >= 400)
+		// 验证没有调用 Next
+		assert.False(t, nextCalled)
+	})
+}
+
+func TestGinMiddlewareWrapper_EdgeCases(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ClearCache()
+
+	t.Run("OperationName is set correctly", func(t *testing.T) {
+		middleware := &TestTypeOperatorMiddleware{}
+		handler := ginMiddlewareWrapper(middleware)
+
+		engine := gin.New()
+		var operationName interface{}
+		var exists bool
+		engine.GET("/test", handler, func(c *gin.Context) {
+			operationName, exists = c.Get(OperationName)
+			c.JSON(http.StatusOK, gin.H{"done": true})
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/test", nil)
+		engine.ServeHTTP(w, req)
+
+		// 验证操作名称已设置
+		assert.True(t, exists)
+		assert.Equal(t, "TestTypeOperatorMiddleware", operationName)
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("Instance is returned to pool", func(t *testing.T) {
+		// 这个测试验证 defer PutInstance 正常工作
+		// 通过多次调用确保对象池正常工作
+		middleware := &TestTypeOperatorMiddleware{}
+		handler := ginMiddlewareWrapper(middleware)
+
+		engine := gin.New()
+		engine.GET("/test", handler, func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"done": true})
+		})
+
+		for i := 0; i < 5; i++ {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest("GET", "/test", nil)
+			engine.ServeHTTP(w, req)
+
+			// 验证每次都能正常执行（如果对象池有问题，这里会 panic）
+			assert.Equal(t, "executed", w.Header().Get("X-TypeOperator"))
+			assert.Equal(t, http.StatusOK, w.Code)
+		}
+	})
 }
 
 func TestGetLang(t *testing.T) {

@@ -281,23 +281,8 @@ func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
 		}
 
 		switch mw := middlewareOp.(type) {
-		case TypeOperator:
-			result, err := mw.Output(ctx)
-			if err != nil {
-				executeErrorHandlers(err, ctx)
-				ctx.Abort()
-				return
-			}
-
-			// 如果中间件返回了 gin.HandlerFunc，执行它
-			if handle, ok := result.(gin.HandlerFunc); ok {
-				handle(ctx)
-				return
-			}
-
-			// 继续执行后续中间件和处理器
-			ctx.Next()
 		case MiddlewareOperator:
+			// 先检查 MiddlewareOperator（因为它继承自 TypeOperator）
 			// 执行前置处理
 			if err := mw.Before(ctx); err != nil {
 				executeErrorHandlers(err, ctx)
@@ -314,6 +299,22 @@ func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
 				logx.Errorf("middleware after error: %v", err)
 			}
 			return
+		case TypeOperator:
+			result, err := mw.Output(ctx)
+			if err != nil {
+				executeErrorHandlers(err, ctx)
+				ctx.Abort()
+				return
+			}
+
+			// 如果中间件返回了 gin.HandlerFunc，执行它
+			if handle, ok := result.(gin.HandlerFunc); ok {
+				handle(ctx)
+				return
+			}
+
+			// 继续执行后续中间件和处理器
+			ctx.Next()
 		}
 
 	}
