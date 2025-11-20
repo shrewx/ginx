@@ -45,6 +45,13 @@ type Client struct {
 	Timeout  time.Duration
 }
 
+type MultipartFile struct {
+	Filename string
+	Header   textproto.MIMEHeader
+
+	Data io.Reader
+}
+
 func (f *Client) Invoke(ctx context.Context, req interface{}) (ResponseBind, error) {
 	request, ok := req.(*http.Request)
 	if !ok {
@@ -56,7 +63,7 @@ func (f *Client) Invoke(ctx context.Context, req interface{}) (ResponseBind, err
 	}
 
 	// 从 context 中获取 RequestConfig 并应用到 HTTP 请求
-	if config := getRequestConfigFromContext(ctx); config != nil {
+	if config := GetRequestConfigFromContext(ctx); config != nil {
 		applyRequestConfig(request, config)
 	}
 
@@ -64,7 +71,7 @@ func (f *Client) Invoke(ctx context.Context, req interface{}) (ResponseBind, err
 	if httpClient == nil {
 		timeout := f.Timeout
 		// 如果 RequestConfig 中有 timeout，使用它
-		if config := getRequestConfigFromContext(ctx); config != nil && config.Timeout != nil {
+		if config := GetRequestConfigFromContext(ctx); config != nil && config.Timeout != nil {
 			timeout = *config.Timeout
 		}
 		httpClient = GetShortConnClientContext(ctx, timeout)
@@ -77,41 +84,6 @@ func (f *Client) Invoke(ctx context.Context, req interface{}) (ResponseBind, err
 	return &Result{
 		Response: resp,
 	}, nil
-}
-
-// requestConfigKey 用于在 context 中存储 RequestConfig
-type requestConfigKey struct{}
-
-// getRequestConfigFromContext 从 context 中获取 RequestConfig
-func getRequestConfigFromContext(ctx context.Context) *requestConfig {
-	if config, ok := ctx.Value(requestConfigKey{}).(*requestConfig); ok {
-		return config
-	}
-	return nil
-}
-
-// requestConfig 存储请求级别的配置
-type requestConfig struct {
-	Headers map[string]string
-	Cookies []*http.Cookie
-	Timeout *time.Duration
-}
-
-// applyRequestConfig 将 RequestConfig 应用到 HTTP 请求
-func applyRequestConfig(req *http.Request, config *requestConfig) {
-	if config == nil {
-		return
-	}
-
-	// 应用 Headers
-	for k, v := range config.Headers {
-		req.Header.Set(k, v)
-	}
-
-	// 应用 Cookies
-	for _, cookie := range config.Cookies {
-		req.AddCookie(cookie)
-	}
 }
 
 func (f *Client) newRequest(ctx context.Context, req interface{}) (*http.Request, error) {
@@ -146,11 +118,11 @@ func (f *Client) newRequest(ctx context.Context, req interface{}) (*http.Request
 func (f *Client) newRequestWithContext(ctx context.Context, method string, rawUrl string, v interface{}) (*http.Request, error) {
 	header := http.Header{}
 	// 从上下文获取语言设置，支持国际化
-	lang, ok := ctx.Value(LangHeader).(string)
+	lang, ok := ctx.Value(CurrentLangHeader()).(string)
 	if ok {
-		header.Add(LangHeader, lang)
+		header.Add(CurrentLangHeader(), lang)
 	} else {
-		header.Add(LangHeader, ginx.i18nLang)
+		header.Add(CurrentLangHeader(), ginx.i18nLang)
 	}
 
 	// 处理空请求体的情况
@@ -440,9 +412,257 @@ func isOk(code int) bool {
 	return code >= http.StatusOK && code < http.StatusMultipleChoices
 }
 
-type MultipartFile struct {
-	Filename string
-	Header   textproto.MIMEHeader
+// RequestConfigKey 用于在 context 中存储 RequestConfig
+type RequestConfigKey struct{}
 
-	Data io.Reader
+// GetRequestConfigFromContext 从 context 中获取 RequestConfig
+func GetRequestConfigFromContext(ctx context.Context) *RequestConfig {
+	if config, ok := ctx.Value(RequestConfigKey{}).(*RequestConfig); ok {
+		return config
+	}
+	return nil
+}
+
+// RequestConfig 存储请求级别的配置
+type RequestConfig struct {
+	Headers map[string]string
+	Cookies []*http.Cookie
+	Timeout *time.Duration
+}
+
+// cloneRequestConfig 深拷贝 RequestConfig，避免跨请求共享可变状态
+func cloneRequestConfig(src *RequestConfig) *RequestConfig {
+	if src == nil {
+		return nil
+	}
+
+	dst := &RequestConfig{
+		Headers: make(map[string]string, len(src.Headers)),
+		Cookies: make([]*http.Cookie, 0, len(src.Cookies)),
+	}
+
+	for k, v := range src.Headers {
+		dst.Headers[k] = v
+	}
+
+	for _, c := range src.Cookies {
+		if c == nil {
+			continue
+		}
+		copied := *c
+		dst.Cookies = append(dst.Cookies, &copied)
+	}
+
+	if src.Timeout != nil {
+		timeout := *src.Timeout
+		dst.Timeout = &timeout
+	}
+
+	return dst
+}
+
+// ensureRequestConfig 返回一个可安全修改的 RequestConfig，并写回 context
+func ensureRequestConfig(ctx context.Context) (*RequestConfig, context.Context) {
+	config := GetRequestConfigFromContext(ctx)
+	if config == nil {
+		config = NewRequestConfig()
+	} else {
+		config = cloneRequestConfig(config)
+	}
+	ctx = context.WithValue(ctx, RequestConfigKey{}, config)
+	return config, ctx
+}
+
+// applyRequestConfig 将 RequestConfig 应用到 HTTP 请求
+func applyRequestConfig(req *http.Request, config *RequestConfig) {
+	if config == nil {
+		return
+	}
+
+	// 应用 Headers
+	for k, v := range config.Headers {
+		req.Header.Set(k, v)
+	}
+
+	// 应用 Cookies
+	for _, cookie := range config.Cookies {
+		req.AddCookie(cookie)
+	}
+}
+
+// Interceptor 拦截器接口，用于在请求前后执行自定义逻辑
+type Interceptor interface {
+	// Intercept 拦截请求，可以修改请求或响应
+	// next 是下一个拦截器或实际的请求执行函数
+	Intercept(ctx context.Context, req interface{}, next InvokeFunc) (interface{}, error)
+}
+
+// InvokeFunc 请求执行函数类型
+type InvokeFunc func(ctx context.Context, req interface{}) (interface{}, error)
+
+// InterceptorFunc 函数式拦截器，方便快速创建拦截器
+type InterceptorFunc func(ctx context.Context, req interface{}, next InvokeFunc) (interface{}, error)
+
+func (f InterceptorFunc) Intercept(ctx context.Context, req interface{}, next InvokeFunc) (interface{}, error) {
+	return f(ctx, req, next)
+}
+
+// RetryInterceptor 重试拦截器
+func RetryInterceptor(maxRetries int, shouldRetry func(error) bool) Interceptor {
+	return InterceptorFunc(func(ctx context.Context, req interface{}, next InvokeFunc) (interface{}, error) {
+		var resp interface{}
+		var err error
+
+		for i := 0; i <= maxRetries; i++ {
+			resp, err = next(ctx, req)
+
+			if err == nil || !shouldRetry(err) {
+				break
+			}
+		}
+
+		return resp, err
+	})
+}
+
+// AuthInterceptor 认证拦截器
+func AuthInterceptor(tokenProvider func() string) Interceptor {
+	return InterceptorFunc(func(ctx context.Context, req interface{}, next InvokeFunc) (interface{}, error) {
+		token := tokenProvider()
+
+		// 获取可安全修改的 RequestConfig
+		config, ctx := ensureRequestConfig(ctx)
+
+		// 添加认证 header
+		config.Headers["Authorization"] = "Bearer " + token
+
+		return next(ctx, req)
+	})
+}
+
+// HeaderInterceptor 通用 Header 拦截器
+func HeaderInterceptor(headers map[string]string) Interceptor {
+	return InterceptorFunc(func(ctx context.Context, req interface{}, next InvokeFunc) (interface{}, error) {
+		config, ctx := ensureRequestConfig(ctx)
+
+		for k, v := range headers {
+			config.Headers[k] = v
+		}
+
+		return next(ctx, req)
+	})
+}
+
+// CookieInterceptor Cookie 拦截器
+func CookieInterceptor(cookies []*http.Cookie) Interceptor {
+	return InterceptorFunc(func(ctx context.Context, req interface{}, next InvokeFunc) (interface{}, error) {
+		config, ctx := ensureRequestConfig(ctx)
+
+		config.Cookies = append(config.Cookies, cookies...)
+
+		return next(ctx, req)
+	})
+}
+
+// buildInterceptorChain 构建拦截器链
+func buildInterceptorChain(interceptors []Interceptor, final InvokeFunc) InvokeFunc {
+	if len(interceptors) == 0 {
+		return final
+	}
+
+	// 从后往前构建链
+	next := final
+	for i := len(interceptors) - 1; i >= 0; i-- {
+		interceptor := interceptors[i]
+		currentNext := next
+		next = func(ctx context.Context, req interface{}) (interface{}, error) {
+			return interceptor.Intercept(ctx, req, currentNext)
+		}
+	}
+
+	return next
+}
+
+// RequestOption 用于配置单个请求的选项
+type RequestOption func(*RequestConfig)
+
+// NewRequestConfig 创建默认的请求配置
+func NewRequestConfig() *RequestConfig {
+	return &RequestConfig{
+		Headers: make(map[string]string),
+		Cookies: make([]*http.Cookie, 0),
+	}
+}
+
+// Apply 应用所有选项到配置
+func (rc *RequestConfig) Apply(opts ...RequestOption) {
+	for _, opt := range opts {
+		opt(rc)
+	}
+}
+
+func (rc *RequestConfig) Merge(other *RequestConfig) {
+	if other == nil {
+		return
+	}
+
+	// 合并 Headers
+	for k, v := range other.Headers {
+		if _, exists := rc.Headers[k]; !exists {
+			rc.Headers[k] = v
+		}
+	}
+
+	// 合并 Cookies
+	rc.Cookies = append(rc.Cookies, other.Cookies...)
+
+	// Timeout 优先使用请求级别的
+	if other.Timeout != nil {
+		rc.Timeout = other.Timeout
+	}
+}
+
+// WithHeader 添加单个 Header
+func WithHeader(key, value string) RequestOption {
+	return func(rc *RequestConfig) {
+		rc.Headers[key] = value
+	}
+}
+
+// WithHeaders 批量添加 Headers
+func WithHeaders(headers map[string]string) RequestOption {
+	return func(rc *RequestConfig) {
+		for k, v := range headers {
+			rc.Headers[k] = v
+		}
+	}
+}
+
+// WithCookies 批量添加 Cookies
+func WithCookies(cookies ...*http.Cookie) RequestOption {
+	return func(rc *RequestConfig) {
+		rc.Cookies = append(rc.Cookies, cookies...)
+	}
+}
+
+// WithRequestTimeout 设置请求超时
+func WithRequestTimeout(timeout time.Duration) RequestOption {
+	return func(rc *RequestConfig) {
+		rc.Timeout = &timeout
+	}
+}
+
+// WithAuthorization 添加 Authorization Header
+func WithAuthorization(token string) RequestOption {
+	return WithHeader("Authorization", token)
+}
+
+// WithBearerToken 添加 Bearer Token
+func WithBearerToken(token string) RequestOption {
+	return WithHeader("Authorization", "Bearer "+token)
+}
+
+// WithContentType 设置 Content-Type
+func WithContentType(contentType string) RequestOption {
+	return WithHeader("Content-Type", contentType)
 }

@@ -36,7 +36,7 @@ func (g *OptionsGenerator) Scan() {
 	g.File.WriteBlock(
 		codegen.Comments("WithInterceptors 批量添加拦截器"),
 		codegen.Func(
-			codegen.Var(codegen.Ellipsis(codegen.Type(g.File.Use(clientModulePath, "Interceptor"))), "interceptors"),
+			codegen.Var(codegen.Ellipsis(codegen.Type(g.File.Use(ginxModulePath, "Interceptor"))), "interceptors"),
 		).Named("WithInterceptors").
 			Return(codegen.Var(codegen.Type("ClientOption"))).
 			Do(

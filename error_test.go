@@ -518,7 +518,7 @@ func TestDefaultErrorHandlerImpl_Handle_CommonError_WithI18n(t *testing.T) {
 	w := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(w)
 	ctx.Request = httptest.NewRequest("GET", "/test", nil)
-	ctx.Request.Header.Set(LangHeader, "en")
+	ctx.Request.Header.Set(CurrentLangHeader(), "en")
 
 	handler := &defaultErrorHandlerImpl{}
 

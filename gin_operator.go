@@ -208,8 +208,8 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 		// 设置操作名称，用于链路追踪和日志记录
 		ctx.Set(OperationName, typeInfo.ElemType.Name())
 		// 设置默认语言头，支持国际化
-		if ctx.GetHeader(LangHeader) == "" {
-			ctx.Header(LangHeader, I18nZH)
+		if ctx.GetHeader(CurrentLangHeader()) == "" {
+			ctx.Header(CurrentLangHeader(), I18nZH)
 		}
 
 		// 使用高性能参数绑定，基于预解析的类型信息
@@ -322,8 +322,8 @@ func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
 
 func GetLang(ctx *gin.Context) string {
 	lang := ginx.i18nLang
-	if ctx.GetHeader(LangHeader) != "" {
-		lang = strings.ToLower(ctx.GetHeader(LangHeader))
+	if ctx.GetHeader(CurrentLangHeader()) != "" {
+		lang = strings.ToLower(ctx.GetHeader(CurrentLangHeader()))
 	}
 	return lang
 }

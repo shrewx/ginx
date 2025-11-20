@@ -9,7 +9,9 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -34,7 +36,13 @@ var (
 	}
 
 	showParams bool
+
+	langHeaderValue atomic.Value
 )
+
+func init() {
+	langHeaderValue.Store(LangHeader)
+}
 
 type Ginx struct {
 	*cobra.Command
@@ -101,7 +109,7 @@ func RunServer(config *conf.Server, r *GinRouter) {
 	if config == nil {
 		config = conf.NewOptions()
 	}
-	
+
 	showParams = config.ShowParams
 
 	// init log
@@ -260,4 +268,21 @@ func initTrace(conf *conf.Server) *trace.Agent {
 	}
 
 	return agent
+}
+
+// SetLangHeader 允许用户自定义语言头，如果传入空字符串则回退到默认值
+func SetLangHeader(header string) {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		header = LangHeader
+	}
+	langHeaderValue.Store(header)
+}
+
+// CurrentLangHeader 返回当前生效的语言头名称
+func CurrentLangHeader() string {
+	if value, ok := langHeaderValue.Load().(string); ok && value != "" {
+		return value
+	}
+	return LangHeader
 }

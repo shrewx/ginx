@@ -643,7 +643,7 @@ func TestGetRequestConfigFromContext(t *testing.T) {
 	tests := []struct {
 		name     string
 		ctx      context.Context
-		expected *requestConfig
+		expected *RequestConfig
 	}{
 		{
 			name:     "context without config",
@@ -652,21 +652,21 @@ func TestGetRequestConfigFromContext(t *testing.T) {
 		},
 		{
 			name: "context with config",
-			ctx: context.WithValue(context.Background(), requestConfigKey{}, &requestConfig{
+			ctx: context.WithValue(context.Background(), RequestConfigKey{}, &RequestConfig{
 				Headers: map[string]string{"X-Test": "value"},
 			}),
-			expected: &requestConfig{
+			expected: &RequestConfig{
 				Headers: map[string]string{"X-Test": "value"},
 			},
 		},
 		{
 			name: "context with full config",
-			ctx: context.WithValue(context.Background(), requestConfigKey{}, &requestConfig{
+			ctx: context.WithValue(context.Background(), RequestConfigKey{}, &RequestConfig{
 				Headers: map[string]string{"Authorization": "Bearer token"},
 				Cookies: []*http.Cookie{{Name: "session", Value: "abc123"}},
 				Timeout: func() *time.Duration { d := 10 * time.Second; return &d }(),
 			}),
-			expected: &requestConfig{
+			expected: &RequestConfig{
 				Headers: map[string]string{"Authorization": "Bearer token"},
 				Cookies: []*http.Cookie{{Name: "session", Value: "abc123"}},
 				Timeout: func() *time.Duration { d := 10 * time.Second; return &d }(),
@@ -676,7 +676,7 @@ func TestGetRequestConfigFromContext(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := getRequestConfigFromContext(tt.ctx)
+			result := GetRequestConfigFromContext(tt.ctx)
 			if tt.expected == nil {
 				assert.Nil(t, result)
 			} else {
@@ -694,7 +694,7 @@ func TestGetRequestConfigFromContext(t *testing.T) {
 func TestApplyRequestConfig(t *testing.T) {
 	tests := []struct {
 		name     string
-		config   *requestConfig
+		config   *RequestConfig
 		validate func(*testing.T, *http.Request)
 	}{
 		{
@@ -707,7 +707,7 @@ func TestApplyRequestConfig(t *testing.T) {
 		},
 		{
 			name: "config with headers",
-			config: &requestConfig{
+			config: &RequestConfig{
 				Headers: map[string]string{
 					"Authorization": "Bearer token123",
 					"X-Custom":      "custom-value",
@@ -722,7 +722,7 @@ func TestApplyRequestConfig(t *testing.T) {
 		},
 		{
 			name: "config with cookies",
-			config: &requestConfig{
+			config: &RequestConfig{
 				Cookies: []*http.Cookie{
 					{Name: "session", Value: "sess123"},
 					{Name: "token", Value: "tok456"},
@@ -741,7 +741,7 @@ func TestApplyRequestConfig(t *testing.T) {
 		},
 		{
 			name: "config with headers and cookies",
-			config: &requestConfig{
+			config: &RequestConfig{
 				Headers: map[string]string{
 					"X-API-Key": "key123",
 				},
@@ -759,7 +759,7 @@ func TestApplyRequestConfig(t *testing.T) {
 		},
 		{
 			name: "config with timeout (timeout not applied in applyRequestConfig)",
-			config: &requestConfig{
+			config: &RequestConfig{
 				Timeout: func() *time.Duration { d := 5 * time.Second; return &d }(),
 			},
 			validate: func(t *testing.T, req *http.Request) {
@@ -828,7 +828,7 @@ func TestClient_Invoke_WithRequestConfig(t *testing.T) {
 	}
 
 	// 创建带有requestConfig的context
-	config := &requestConfig{
+	config := &RequestConfig{
 		Headers: map[string]string{
 			"X-Custom-Header": "custom-value",
 		},
@@ -836,7 +836,7 @@ func TestClient_Invoke_WithRequestConfig(t *testing.T) {
 			{Name: "test-cookie", Value: "cookie-value"},
 		},
 	}
-	ctx := context.WithValue(context.Background(), requestConfigKey{}, config)
+	ctx := context.WithValue(context.Background(), RequestConfigKey{}, config)
 
 	// 使用http.Request直接调用
 	req, err := http.NewRequest("GET", server.URL+"/test", nil)
@@ -881,10 +881,10 @@ func TestClient_Invoke_WithRequestConfigTimeout(t *testing.T) {
 
 	// 创建带有短超时的requestConfig
 	shortTimeout := 100 * time.Millisecond
-	config := &requestConfig{
+	config := &RequestConfig{
 		Timeout: &shortTimeout,
 	}
-	ctx := context.WithValue(context.Background(), requestConfigKey{}, config)
+	ctx := context.WithValue(context.Background(), RequestConfigKey{}, config)
 
 	req, err := http.NewRequest("GET", server.URL+"/test", nil)
 	require.NoError(t, err)
@@ -894,7 +894,7 @@ func TestClient_Invoke_WithRequestConfigTimeout(t *testing.T) {
 	assert.Error(t, err)
 	// 验证是超时错误 (可能是 "timeout" 或 "Timeout exceeded")
 	errMsg := err.Error()
-	assert.True(t, strings.Contains(errMsg, "timeout") || strings.Contains(errMsg, "Timeout exceeded"), 
+	assert.True(t, strings.Contains(errMsg, "timeout") || strings.Contains(errMsg, "Timeout exceeded"),
 		"expected timeout error, got: %s", errMsg)
 }
 
@@ -955,12 +955,12 @@ func TestClient_Invoke_WithStructRequest(t *testing.T) {
 	testReq := &testRequest{Email: "test@example.com"}
 
 	// 创建带有requestConfig的context
-	config := &requestConfig{
+	config := &RequestConfig{
 		Headers: map[string]string{
 			"X-Request-ID": "req-123",
 		},
 	}
-	ctx := context.WithValue(context.Background(), requestConfigKey{}, config)
+	ctx := context.WithValue(context.Background(), RequestConfigKey{}, config)
 
 	// 由于structReq没有实现PathDescriber，我们需要使用http.Request
 	req, err := http.NewRequest("GET", server.URL+"/test", nil)
@@ -993,7 +993,7 @@ func TestApplyRequestConfig_HeaderOverride(t *testing.T) {
 	req.Header.Set("X-Custom", "original")
 
 	// 应用新的配置
-	config := &requestConfig{
+	config := &RequestConfig{
 		Headers: map[string]string{
 			"Authorization": "Bearer new-token",
 			"X-New-Header":  "new-value",
@@ -1016,7 +1016,7 @@ func TestApplyRequestConfig_MultipleCookies(t *testing.T) {
 	// 添加初始cookie
 	req.AddCookie(&http.Cookie{Name: "existing", Value: "cookie"})
 
-	config := &requestConfig{
+	config := &RequestConfig{
 		Cookies: []*http.Cookie{
 			{Name: "session", Value: "sess123", Path: "/", HttpOnly: true},
 			{Name: "token", Value: "tok456", Secure: true},
@@ -1045,7 +1045,7 @@ func TestRequestConfig_EmptyValues(t *testing.T) {
 	req, err := http.NewRequest("GET", "http://localhost/test", nil)
 	require.NoError(t, err)
 
-	config := &requestConfig{
+	config := &RequestConfig{
 		Headers: map[string]string{},
 		Cookies: []*http.Cookie{},
 	}
@@ -1060,7 +1060,7 @@ func TestRequestConfig_EmptyValues(t *testing.T) {
 // BenchmarkApplyRequestConfig 基准测试应用请求配置
 func BenchmarkApplyRequestConfig(b *testing.B) {
 	req, _ := http.NewRequest("GET", "http://localhost/test", nil)
-	config := &requestConfig{
+	config := &RequestConfig{
 		Headers: map[string]string{
 			"Authorization": "Bearer token",
 			"X-Custom-1":    "value1",
@@ -1080,13 +1080,13 @@ func BenchmarkApplyRequestConfig(b *testing.B) {
 
 // BenchmarkGetRequestConfigFromContext 基准测试从上下文获取配置
 func BenchmarkGetRequestConfigFromContext(b *testing.B) {
-	config := &requestConfig{
+	config := &RequestConfig{
 		Headers: map[string]string{"X-Test": "value"},
 	}
-	ctx := context.WithValue(context.Background(), requestConfigKey{}, config)
+	ctx := context.WithValue(context.Background(), RequestConfigKey{}, config)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = getRequestConfigFromContext(ctx)
+		_ = GetRequestConfigFromContext(ctx)
 	}
 }

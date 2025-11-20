@@ -8,8 +8,7 @@ import (
 )
 
 const (
-	clientModulePath = "github.com/shrewx/ginx/pkg/client"
-	ginxModulePath   = "github.com/shrewx/ginx"
+	ginxModulePath = "github.com/shrewx/ginx"
 )
 
 func NewServiceClientGenerator(serviceName string, file *codegen.File) *ServiceClientGenerator {
@@ -80,12 +79,12 @@ cc.defaultReqConfig = c.defaultReqConfig
 	g.File.WriteBlock(
 		codegen.Comments("buildRequestConfig 构建最终的请求配置（合并默认配置和请求级配置）"),
 		codegen.Func(
-			codegen.Var(codegen.Ellipsis(codegen.Type(g.File.Use(clientModulePath, "RequestOption"))), "opts"),
+			codegen.Var(codegen.Ellipsis(codegen.Type(g.File.Use(ginxModulePath, "RequestOption"))), "opts"),
 		).Named("buildRequestConfig").
 			MethodOf(codegen.Var(codegen.Star(codegen.Type(g.ClientInstanceName())), "c")).
-			Return(codegen.Var(codegen.Star(codegen.Type(g.File.Use(clientModulePath, "RequestConfig"))))).
+			Return(codegen.Var(codegen.Star(codegen.Type(g.File.Use(ginxModulePath, "RequestConfig"))))).
 			Do(
-				codegen.Expr("config := ?", codegen.Call(g.File.Use(clientModulePath, "NewRequestConfig"))),
+				codegen.Expr("config := ?", codegen.Call(g.File.Use(ginxModulePath, "NewRequestConfig"))),
 				codegen.Expr(`
 // 先应用默认配置
 config.Merge(c.defaultReqConfig)
@@ -143,8 +142,8 @@ func (g *ServiceClientGenerator) WriteClient() {
 	interceptors: make([]?, 0),
 	defaultReqConfig: ?,
 }`, codegen.Type(g.ClientInstanceName()),
-				codegen.Id(g.File.Use(clientModulePath, "Interceptor")),
-				codegen.Call(g.File.Use(clientModulePath, "NewRequestConfig"))),
+				codegen.Id(g.File.Use(ginxModulePath, "Interceptor")),
+				codegen.Call(g.File.Use(ginxModulePath, "NewRequestConfig"))),
 			codegen.Expr(`
 // 应用客户端选项
 for _, opt := range opts {
@@ -161,8 +160,8 @@ for _, opt := range opts {
 			codegen.Var(codegen.Struct(
 				codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "Client")), "Client"),
 				codegen.Var(codegen.Type(g.File.Use("context", "Context")), "ctx"),
-				codegen.Var(codegen.Slice(codegen.Type(g.File.Use(clientModulePath, "Interceptor"))), "interceptors"),
-				codegen.Var(codegen.Star(codegen.Type(g.File.Use(clientModulePath, "RequestConfig"))), "defaultReqConfig"),
+				codegen.Var(codegen.Slice(codegen.Type(g.File.Use(ginxModulePath, "Interceptor"))), "interceptors"),
+				codegen.Var(codegen.Star(codegen.Type(g.File.Use(ginxModulePath, "RequestConfig"))), "defaultReqConfig"),
 			),
 				g.ClientInstanceName(),
 			),
@@ -182,7 +181,7 @@ func (g *ServiceClientGenerator) OperationMethod(ctx context.Context, operation 
 	}
 
 	// 添加 RequestOption 可变参数
-	params = append(params, codegen.Var(codegen.Ellipsis(codegen.Type(g.File.Use(clientModulePath, "RequestOption"))), "opts"))
+	params = append(params, codegen.Var(codegen.Ellipsis(codegen.Type(g.File.Use(ginxModulePath, "RequestOption"))), "opts"))
 
 	returns := make([]*codegen.SnippetField, 0)
 

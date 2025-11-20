@@ -887,7 +887,7 @@ func TestGetLang(t *testing.T) {
 
 			if tt.header != "" {
 				ctx.Request = httptest.NewRequest("GET", "/test", nil)
-				ctx.Request.Header.Set(LangHeader, tt.header)
+				ctx.Request.Header.Set(CurrentLangHeader(), tt.header)
 			} else {
 				ctx.Request = httptest.NewRequest("GET", "/test", nil)
 			}

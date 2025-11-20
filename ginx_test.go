@@ -680,3 +680,21 @@ func TestIntegration_FullServerLifecycle(t *testing.T) {
 		t.Error("集成测试超时")
 	}
 }
+
+func TestSetLangHeader(t *testing.T) {
+	origin := CurrentLangHeader()
+	t.Cleanup(func() {
+		SetLangHeader(origin)
+	})
+
+	custom := "X-Test-Lang"
+	SetLangHeader(custom)
+	if got := CurrentLangHeader(); got != custom {
+		t.Fatalf("expected %s, got %s", custom, got)
+	}
+
+	SetLangHeader("")
+	if got := CurrentLangHeader(); got != LangHeader {
+		t.Fatalf("expected fallback to %s, got %s", LangHeader, got)
+	}
+}

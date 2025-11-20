@@ -33,14 +33,6 @@ func toColonPath(path string) string {
 }
 
 func (g *OperationGenerator) Scan(ctx context.Context, openapi *oas.OpenAPI) {
-	// 生成 requestConfigKey 类型定义（用于 context）
-	g.File.WriteBlock(
-		codegen.Comments("requestConfigKey 用于在 context 中存储 RequestConfig"),
-		codegen.DeclType(
-			codegen.Var(codegen.Struct(), "requestConfigKey"),
-		),
-	)
-
 	eachOperation(openapi, func(method string, path string, op *oas.Operation) {
 		g.WriteOperation(ctx, method, path, op)
 	})
@@ -77,14 +69,14 @@ func (g *OperationGenerator) WriteOperation(ctx context.Context, method string, 
 	g.File.WriteBlock(
 		codegen.Func().
 			Named("Path").Return(codegen.Var(codegen.String)).
-			MethodOf(codegen.Var(codegen.Type(id))).
+			MethodOf(codegen.Var(codegen.Star(codegen.Type(id)))).
 			Do(codegen.Return(g.File.Val(path))),
 	)
 
 	g.File.WriteBlock(
 		codegen.Func().
 			Named("Method").Return(codegen.Var(codegen.String)).
-			MethodOf(codegen.Var(codegen.Type(id))).
+			MethodOf(codegen.Var(codegen.Star(codegen.Type(id)))).
 			Do(codegen.Return(g.File.Val(method))),
 	)
 
@@ -113,7 +105,7 @@ func (g *OperationGenerator) WriteOperation(ctx context.Context, method string, 
 			codegen.Func(
 				codegen.Var(codegen.Type(g.File.Use("context", "Context")), "ctx"),
 				codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "Client")), "c"),
-				codegen.Var(codegen.Star(codegen.Type(g.File.Use(clientModulePath, "RequestConfig"))), "config"),
+				codegen.Var(codegen.Star(codegen.Type(g.File.Use(ginxModulePath, "RequestConfig"))), "config"),
 			).
 				Return(
 					codegen.Var(codegen.Star(respType)),
@@ -126,12 +118,12 @@ func (g *OperationGenerator) WriteOperation(ctx context.Context, method string, 
 					codegen.Expr(`
 // 将配置注入到 context
 if config != nil {
-	ctx = context.WithValue(ctx, requestConfigKey{}, config)
+	ctx = context.WithValue(ctx, ?{}, config)
 }
 
 response, err := req.Invoke(ctx, c)
 response.Bind(resp)
-`),
+`, codegen.Type(g.File.Use(ginxModulePath, "RequestConfigKey"))),
 					codegen.Return(codegen.Id("resp"), codegen.Id("err")),
 				),
 		)
@@ -143,7 +135,7 @@ response.Bind(resp)
 		codegen.Func(
 			codegen.Var(codegen.Type(g.File.Use("context", "Context")), "ctx"),
 			codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "Client")), "c"),
-			codegen.Var(codegen.Type(g.File.Use(clientModulePath, "RequestConfig")), "config"),
+			codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "RequestConfig")), "config"),
 		).
 			Return(
 				codegen.Var(codegen.Error),
@@ -154,11 +146,11 @@ response.Bind(resp)
 				codegen.Expr(`
 // 将配置注入到 context
 if config != nil {
-	ctx = context.WithValue(ctx, requestConfigKey{}, config)
+	ctx = context.WithValue(ctx, ?{}, config)
 }
 
 _, err := req.Invoke(ctx, c)
-`),
+`, codegen.Type(g.File.Use(ginxModulePath, "RequestConfigKey"))),
 				codegen.Return(codegen.Id("err")),
 			),
 	)
