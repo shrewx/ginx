@@ -361,7 +361,7 @@ const (
    ```go
    UserNameNotFound.WithParams(map[string]interface{}{
        "Name": "ryan",
-   }).WithField(Name,"ryan")
+   }).WithField(Age, 18)
    ```
    最终的错误信息为：
    ```

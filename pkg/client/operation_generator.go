@@ -122,7 +122,12 @@ if config != nil {
 }
 
 response, err := req.Invoke(ctx, c)
-response.Bind(resp)
+if err != nil {
+	return nil, err
+}
+if err = response.Bind(resp); err != nil {
+	return nil, err
+}
 `, codegen.Type(g.File.Use(ginxModulePath, "RequestConfigKey"))),
 					codegen.Return(codegen.Id("resp"), codegen.Id("err")),
 				),
