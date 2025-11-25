@@ -23,12 +23,17 @@ import (
 )
 
 func NewOperatorScanner(pkg *packagesx.Package) *OperatorScanner {
-	return &OperatorScanner{
+	scanner := &OperatorScanner{
 		pkg:               pkg,
 		DefinitionScanner: NewDefinitionScanner(pkg),
 		StatusErrScanner:  NewStatusErrScanner(pkg),
 		securityScheme:    make(map[string]*oas.SecurityScheme, 0),
 	}
+
+	// 扫描注册的错误格式化器
+	scanner.scanRegisteredErrorFormatters()
+
+	return scanner
 }
 
 type OperatorScanner struct {
@@ -40,6 +45,9 @@ type OperatorScanner struct {
 
 	securityScheme      map[string]*oas.SecurityScheme
 	securityRequirement oas.SecurityRequirement
+
+	// 注册的错误类型（从 RegisterErrorFormatter 扫描得到）
+	registeredErrorType types.Type
 }
 
 func (scanner *OperatorScanner) Operator(ctx context.Context, typeName *types.TypeName) *Operator {
@@ -193,14 +201,237 @@ func (scanner *OperatorScanner) scanReturns(ctx context.Context, op *Operator, t
 				}
 			}
 
-			if scanner.StatusErrScanner.StatusErrType != nil {
-				op.StatusErrors = scanner.StatusErrScanner.StatusErrorsInFunc(method.(*typesutil.TMethod).Func)
-				schema := scanner.DefinitionScanner.GetSchemaByType(ctx, scanner.StatusErrScanner.StatusErrType)
+			// 扫描错误信息
+			op.StatusErrors = scanner.StatusErrScanner.StatusErrorsInFunc(method.(*typesutil.TMethod).Func)
 
+			// 优先使用自定义错误 Schema
+			// 1. 优先使用从 RegisterErrorFormatter 扫描到的错误类型
+			if scanner.registeredErrorType != nil {
+				schema := scanner.DefinitionScanner.GetSchemaByType(ctx, scanner.registeredErrorType)
+				op.StatusErrorSchema = schema
+
+				// 提取状态码映射（如果自定义错误格式化器实现了 StatusCodeMap 方法）
+				op.StatusCodeMap = scanner.extractStatusCodeMap()
+			} else if scanner.StatusErrScanner.StatusErrType != nil {
+				// 回退到默认的 StatusErr
+				schema := scanner.DefinitionScanner.GetSchemaByType(ctx, scanner.StatusErrScanner.StatusErrType)
 				op.StatusErrorSchema = schema
 			}
 		}
 	}
+}
+
+// scanRegisteredErrorFormatters 扫描代码中注册的错误格式化器
+// 自动识别通过 RegisterErrorFormatter 注册的包含 error tag 的错误类型
+func (scanner *OperatorScanner) scanRegisteredErrorFormatters() {
+	formatterScanner := NewErrorFormatterScanner(scanner.pkg)
+	errorTypes := formatterScanner.Scan()
+
+	// 使用第一个识别到的包含 error tag 的错误类型
+	if len(errorTypes) > 0 {
+		scanner.registeredErrorType = errorTypes[0]
+	}
+}
+
+// extractStatusCodeMap 提取自定义错误格式化器的状态码映射
+// 查找 StatusCodeMap() map[int64]int 方法并提取其返回值
+func (scanner *OperatorScanner) extractStatusCodeMap() map[int64]int {
+	if scanner.registeredErrorType == nil {
+		return nil
+	}
+
+	// 检查是否实现了 StatusCodeMap() map[int64]int 方法
+	for _, typ := range []types.Type{
+		scanner.registeredErrorType,
+		types.NewPointer(scanner.registeredErrorType),
+	} {
+		method, ok := typesutil.FromTType(typ).MethodByName("StatusCodeMap")
+		if !ok {
+			continue
+		}
+
+		// 检查方法签名：StatusCodeMap() map[int64]int
+		funcType := method.(*typesutil.TMethod).Func.Type().(*types.Signature)
+
+		// 必须没有参数（除了 receiver）
+		if funcType.Params().Len() != 0 {
+			continue
+		}
+
+		// 必须有 1 个返回值
+		if funcType.Results().Len() != 1 {
+			continue
+		}
+
+		// 返回值必须是 map[int64]int
+		resultType := funcType.Results().At(0).Type()
+		if mapType, ok := resultType.(*types.Map); ok {
+			keyType := mapType.Key().String()
+			valueType := mapType.Elem().String()
+			if keyType == "int64" && valueType == "int" {
+				typeFunc := method.(*typesutil.TMethod).Func
+				logrus.Debugf("method package: %s", typeFunc.Pkg().Path())
+
+				// 获取方法定义所在的包
+				methodPkg := scanner.getPackageForFunc(typeFunc)
+				if methodPkg == nil {
+					logrus.Warnf("cannot find package for method %s", typeFunc.FullName())
+					return nil
+				}
+
+				// 尝试提取方法的返回值（静态分析）
+				results, n := methodPkg.FuncResultsOf(typeFunc)
+				logrus.Debugf("FuncResultsOf returned %d result groups with %d total results", n, len(results))
+				if n == 1 {
+					logrus.Debugf("result group 0 has %d results", len(results[0]))
+					// 尝试从 AST 中提取 map 字面量
+					statusCodeMap := scanner.extractMapLiteralWithPkg(methodPkg, results[0])
+					if statusCodeMap != nil {
+						return statusCodeMap
+					}
+				} else {
+					logrus.Warnf("expected 1 result group but got %d", n)
+				}
+
+				// 如果无法提取具体值，返回 nil
+				return nil
+			}
+		}
+	}
+
+	return nil
+}
+
+// getPackageForFunc 获取函数定义所在的包
+func (scanner *OperatorScanner) getPackageForFunc(typeFunc *types.Func) *packagesx.Package {
+	funcPkgPath := typeFunc.Pkg().Path()
+
+	// 检查是否是当前包
+	if funcPkgPath == scanner.pkg.PkgPath {
+		return scanner.pkg
+	}
+
+	// 在所有已加载的包中查找
+	for _, pkgInfo := range scanner.pkg.AllPackages {
+		if pkgInfo.PkgPath == funcPkgPath {
+			return packagesx.NewPackage(pkgInfo)
+		}
+	}
+
+	logrus.Warnf("package %s not found in loaded packages", funcPkgPath)
+	return nil
+}
+
+// extractMapLiteral 从函数返回结果中提取 map 字面量
+func (scanner *OperatorScanner) extractMapLiteral(results []packagesx.TypeAndValueWithExpr) map[int64]int {
+	return scanner.extractMapLiteralWithPkg(scanner.pkg, results)
+}
+
+// extractMapLiteralWithPkg 从函数返回结果中提取 map 字面量（使用指定的包）
+func (scanner *OperatorScanner) extractMapLiteralWithPkg(pkg *packagesx.Package, results []packagesx.TypeAndValueWithExpr) map[int64]int {
+	for _, result := range results {
+		if result.Expr == nil {
+			continue
+		}
+
+		// 查找 map 字面量
+		var mapLit *ast.CompositeLit
+		ast.Inspect(result.Expr, func(node ast.Node) bool {
+			if lit, ok := node.(*ast.CompositeLit); ok {
+				litType := pkg.TypesInfo.TypeOf(lit)
+				logrus.Debugf("found composite literal with type: %v", litType)
+				if _, isMap := litType.(*types.Map); isMap {
+					mapLit = lit
+					return false
+				}
+			}
+			return true
+		})
+
+		if mapLit == nil {
+			logrus.Warnf("no map literal found in return expression")
+			continue
+		}
+
+		logrus.Debugf("found map literal with %d elements", len(mapLit.Elts))
+
+		// 提取 map 的键值对
+		statusCodeMap := make(map[int64]int)
+		for i, elt := range mapLit.Elts {
+			if kv, ok := elt.(*ast.KeyValueExpr); ok {
+				logrus.Debugf("processing map entry %d: key=%T, value=%T", i, kv.Key, kv.Value)
+
+				// 提取 key (int64)
+				keyTV, err := pkg.Eval(kv.Key)
+				if err != nil {
+					logrus.Warnf("failed to evaluate map key at index %d: %v, error: %v", i, kv.Key, err)
+					continue
+				}
+
+				// 尝试从 TypeAndValue 中获取值
+				var key int64
+				if keyTV.Value != nil {
+					// 有常量值
+					if v := valueOf(keyTV.Value); v != nil {
+						if int64Val, ok := v.(int64); ok {
+							key = int64Val
+						} else if intVal, ok := v.(int); ok {
+							key = int64(intVal)
+						} else {
+							logrus.Debugf("map key is not int64 or int: %T", v)
+							continue
+						}
+					} else {
+						logrus.Debugf("map key value is nil")
+						continue
+					}
+				} else {
+					// 没有常量值，可能是方法调用或变量引用
+					// 尝试从类型信息中获取
+					logrus.Debugf("map key has no constant value, type: %v", keyTV.Type)
+					continue
+				}
+
+				// 提取 value (int)
+				valueTV, err := pkg.Eval(kv.Value)
+				if err != nil {
+					logrus.Debugf("failed to evaluate map value: %v, error: %v", kv.Value, err)
+					continue
+				}
+
+				var value int
+				if valueTV.Value != nil {
+					if v := valueOf(valueTV.Value); v != nil {
+						if intVal, ok := v.(int); ok {
+							value = intVal
+						} else if int64Val, ok := v.(int64); ok {
+							value = int(int64Val)
+						} else {
+							logrus.Debugf("map value is not int or int64: %T", v)
+							continue
+						}
+					} else {
+						logrus.Debugf("map value is nil")
+						continue
+					}
+				} else {
+					logrus.Debugf("map value has no constant value, type: %v", valueTV.Type)
+					continue
+				}
+
+				statusCodeMap[key] = value
+				logrus.Debugf("extracted status code mapping: %d -> %d", key, value)
+			}
+		}
+
+		if len(statusCodeMap) > 0 {
+			return statusCodeMap
+		} else {
+			logrus.Warnf("found StatusCodeMap() method but no mappings could be extracted")
+		}
+	}
+
+	return nil
 }
 
 func (scanner *OperatorScanner) firstValueOfFunc(named *types.Named, name string) (interface{}, bool) {
@@ -474,6 +705,8 @@ type Operator struct {
 	StatusErrors      []*statuserror.StatusErr
 	StatusErrorSchema *oas.Schema
 
+	StatusCodeMap map[int64]int
+
 	SuccessStatus   int
 	SuccessType     types.Type
 	SuccessResponse *oas.Response
@@ -489,6 +722,30 @@ func (operator *Operator) AddNonBodyParameter(parameter *oas.Parameter) {
 
 func (operator *Operator) SetRequestBody(requestBody *oas.RequestBody) {
 	operator.RequestBody = requestBody
+}
+
+// getStatusCodeForError 获取错误的 HTTP 状态码
+// 优先级：
+// 1. 如果有自定义状态码映射，查找该错误码对应的状态码
+// 2. 如果映射中有 0（默认状态码），使用它
+// 3. 否则使用 StatusErr 自己的 StatusCode() 方法
+func (operator *Operator) getStatusCodeForError(statusError *statuserror.StatusErr) int {
+	if operator.StatusCodeMap == nil {
+		return statusError.StatusCode()
+	}
+
+	// 查找该错误码的自定义状态码
+	if customCode, ok := operator.StatusCodeMap[statusError.Code()]; ok {
+		return customCode
+	}
+
+	// 查找默认状态码（code = 0）
+	if defaultCode, ok := operator.StatusCodeMap[0]; ok {
+		return defaultCode
+	}
+
+	// 使用默认逻辑
+	return statusError.StatusCode()
 }
 
 func (operator *Operator) BindOperation(method string, operation *oas.Operation, last bool) {
@@ -510,11 +767,13 @@ func (operator *Operator) BindOperation(method string, operation *oas.Operation,
 	for _, statusError := range operator.StatusErrors {
 		statusErrorList := make([]string, 0)
 
+		// 获取状态码：优先使用自定义映射，否则使用默认逻辑
+		code := operator.getStatusCodeForError(statusError)
+		if code < 400 {
+			code = 500
+		}
+
 		if operation.Responses.Responses != nil {
-			code := statusError.StatusCode()
-			if statusError.StatusCode() < 400 {
-				code = 500
-			}
 			if resp, ok := operation.Responses.Responses[int(code)]; ok {
 				if resp.Extensions != nil {
 					if v, ok := resp.Extensions[XStatusErrs]; ok {
@@ -548,10 +807,6 @@ func (operator *Operator) BindOperation(method string, operation *oas.Operation,
 			resp.Description = description.String()
 		}
 		resp.AddContent("application/json", oas.NewMediaTypeWithSchema(operator.StatusErrorSchema))
-		code := statusError.StatusCode()
-		if statusError.StatusCode() < 400 {
-			code = 500
-		}
 		operation.AddResponse(int(code), resp)
 	}
 

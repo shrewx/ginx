@@ -33,10 +33,6 @@ type StatusErr struct {
 	ErrorCode int64 `json:"code"`
 	// 消息
 	Message string `json:"message"`
-	// 中文
-	ZHMessage string `json:"-"`
-	// 英文
-	ENMessage string `json:"-"`
 
 	Messages map[string]string `json:"-"`
 	// 错误参数

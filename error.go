@@ -80,7 +80,7 @@ func (h *defaultErrorHandlerImpl) Handle(ctx *gin.Context, err error) (bool, Err
 		if statusCode < 400 {
 			statusCode = http.StatusUnprocessableEntity
 		}
-
+		i18nx.Instance().LocalizeData()
 		body, _ := json.Marshal(i18nMsg)
 		return true, &defaultErrorResponse{
 			err:         err,
@@ -116,6 +116,15 @@ func RegisterErrorHandler(handler ErrorHandler) {
 	registeredErrorHandlers = append(registeredErrorHandlers, handler)
 }
 
+// RegisterErrorFormatter 注册自定义响应格式化器
+// 格式化器按注册顺序执行，第一个返回 true 的格式化器生效
+func RegisterErrorFormatter(formatter ResponseFormatter) {
+	if formatter == nil {
+		return
+	}
+	registeredErrorResponseFormatters = append(registeredErrorResponseFormatters, formatter)
+}
+
 // ResponseFormatter 响应格式化器接口
 // 负责将 ErrorResponse 格式化为最终的响应
 type ResponseFormatter interface {
@@ -124,6 +133,12 @@ type ResponseFormatter interface {
 	// Format 格式化响应
 	// 返回: statusCode, contentType, body, headers
 	Format(ctx *gin.Context, response ErrorResponse) (statusCode int, contentType string, body []byte, headers http.Header)
+}
+
+// StatusCodeFormatter 状态码格式化器接口
+// 负责将 ErrorResponse 中的状态码转换为实际的 HTTP 状态码
+type StatusCodeFormatter interface {
+	StatusCodeMap() map[int64]int
 }
 
 // defaultFormatterImpl 默认的响应格式化器
@@ -141,8 +156,8 @@ func (f *defaultFormatterImpl) Format(ctx *gin.Context, response ErrorResponse) 
 var (
 	// registeredErrorHandlers 存储注册的自定义错误处理器
 	registeredErrorHandlers []ErrorHandler
-	// registeredResponseFormatters 存储注册的响应格式化器
-	registeredResponseFormatters []ResponseFormatter
+	// registeredErrorResponseFormatters 存储注册的响应格式化器
+	registeredErrorResponseFormatters []ResponseFormatter
 	// 默认错误处理器
 	defaultErrorHandler ErrorHandler = &defaultErrorHandlerImpl{}
 	// 默认响应格式化器
@@ -169,7 +184,7 @@ func executeErrorHandlers(err error, ctx *gin.Context) {
 	}
 
 	// 4. 尝试使用注册的响应格式化器
-	for _, formatter := range registeredResponseFormatters {
+	for _, formatter := range registeredErrorResponseFormatters {
 		if formatter.Match(ctx, err) {
 			statusCode, contentType, body, headers := formatter.Format(ctx, response)
 			abortWithResponse(ctx, statusCode, contentType, body, headers)
