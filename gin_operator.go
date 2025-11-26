@@ -119,7 +119,7 @@ func initGinEngine(r *GinRouter, agent *trace.Agent) *gin.Engine {
 	}
 
 	// 收集路由信息并打印
-	routes := collectRoutes(r, "")
+	routes := collectRoutes(r, "", nil)
 	printRoutes(routes)
 
 	loadGinRouters(root, r)
@@ -220,7 +220,7 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 		}
 
 		// 显示参数绑定日志
-		showParameterBinding(typeInfo, operator)
+		showParameterBinding(ctx, typeInfo)
 
 		// 执行业务逻辑
 		result, err := operator.Output(ctx)
@@ -243,11 +243,13 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 	}
 }
 
-func showParameterBinding(typeInfo *OperatorTypeInfo, operator Operator) {
-	if showParams {
-		logx.Infof("parse %s params : %+v", typeInfo.ElemType.Name(), operator)
-	} else {
-		logx.Debugf("parse %s params : %+v", typeInfo.ElemType.Name(), operator)
+func showParameterBinding(ctx *gin.Context, typeInfo *OperatorTypeInfo) {
+	if value, exists := ctx.Get(ParsedParamsKey); exists {
+		if showParams {
+			logx.Infof("Parse %s params : %+v", typeInfo.ElemType.Name(), value)
+		} else {
+			logx.Debugf("Parse %s params : %+v", typeInfo.ElemType.Name(), value)
+		}
 	}
 }
 
@@ -337,7 +339,7 @@ type RouteInfo struct {
 }
 
 // collectRoutes 收集所有路由信息
-func collectRoutes(r *GinRouter, parentPath string) []RouteInfo {
+func collectRoutes(r *GinRouter, parentPath string, parentMiddlewares []string) []RouteInfo {
 	var routes []RouteInfo
 	basePath := r.basePath
 	if basePath != "" && !strings.HasPrefix(basePath, "/") {
@@ -347,10 +349,15 @@ func collectRoutes(r *GinRouter, parentPath string) []RouteInfo {
 	currentPath := joinPath(parentPath, basePath)
 
 	// 收集当前路由的中间件
-	var middlewares []string
+	var currentMiddlewares []string
 	for _, m := range r.middlewareOperators {
-		middlewares = append(middlewares, getOperatorName(m))
+		currentMiddlewares = append(currentMiddlewares, getOperatorName(m))
 	}
+
+	// 合并父级中间件和当前路由的中间件
+	allMiddlewares := make([]string, 0, len(parentMiddlewares)+len(currentMiddlewares))
+	allMiddlewares = append(allMiddlewares, parentMiddlewares...)
+	allMiddlewares = append(allMiddlewares, currentMiddlewares...)
 
 	// 如果有处理器，记录路由
 	if r.handleOperator != nil {
@@ -361,13 +368,13 @@ func collectRoutes(r *GinRouter, parentPath string) []RouteInfo {
 			Method:      strings.ToUpper(r.handleOperator.Method()),
 			Path:        fullPath,
 			Handler:     getOperatorName(r.handleOperator),
-			Middlewares: middlewares,
+			Middlewares: allMiddlewares,
 		})
 	}
 
-	// 递归收集子路由
+	// 递归收集子路由，传递合并后的中间件列表
 	for child := range r.children {
-		childRoutes := collectRoutes(child, currentPath) // Pass the currentPath for recursion
+		childRoutes := collectRoutes(child, currentPath, allMiddlewares)
 		routes = append(routes, childRoutes...)
 	}
 
@@ -446,15 +453,22 @@ func printRoutes(routes []RouteInfo) {
 
 		handlerCount := len(route.Middlewares) + 1
 
+		var middlewareInfo string
+		if len(route.Middlewares) > 0 {
+			middlewareInfo = fmt.Sprintf(" (%d handlers: %s)", handlerCount, strings.Join(route.Middlewares, " -> "))
+		} else {
+			middlewareInfo = fmt.Sprintf(" (%d handlers)", handlerCount)
+		}
+
 		// 格式化输出
 		pathPadding := maxPathLen - len(route.Path)
-		logx.InfofWithoutFile("%s %-7s %s%s --> %s (%d handlers)",
+		logx.InfofWithoutFile("%s %-7s %s%s --> %s%s",
 			icon,
 			route.Method,
 			route.Path,
 			strings.Repeat(" ", pathPadding),
 			route.Handler,
-			handlerCount,
+			middlewareInfo,
 		)
 	}
 

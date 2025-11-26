@@ -80,7 +80,7 @@ func (h *defaultErrorHandlerImpl) Handle(ctx *gin.Context, err error) (bool, Err
 		if statusCode < 400 {
 			statusCode = http.StatusUnprocessableEntity
 		}
-		i18nx.Instance().LocalizeData()
+
 		body, _ := json.Marshal(i18nMsg)
 		return true, &defaultErrorResponse{
 			err:         err,

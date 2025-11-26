@@ -3,34 +3,21 @@ package ginx
 import (
 	"reflect"
 	"sync"
-	"time"
 )
 
 // FieldInfo 缓存的字段信息
 type FieldInfo struct {
-	Index      int          // 字段索引
-	Name       string       // 字段名称
-	In         string       // 参数来源 (query, path, body, etc.)
-	ParamName  string       // 参数名称
-	Validation string       // 验证规则
-	Type       reflect.Type // 字段类型
-	Kind       reflect.Kind // 字段种类
+	Index       int                 // 字段索引
+	In          string              // 参数来源 (query, path, body, etc.)
+	ParamName   string              // 参数名称
+	StructField reflect.StructField // 字段的完整结构
 }
 
 // OperatorTypeInfo 操作符类型缓存信息
 type OperatorTypeInfo struct {
-	Type         reflect.Type // 操作符类型
-	ElemType     reflect.Type // 元素类型 (去除指针)
-	Fields       []FieldInfo  // 字段信息
-	Method       string       // HTTP方法 (预计算)
-	Path         string       // 路径模板 (预计算)
-	PathParams   []string     // 路径参数名列表
-	HasPathParam bool         // 是否包含路径参数
-	HasQuery     bool         // 是否包含查询参数
-	HasBody      bool         // 是否包含Body参数
-	HasForm      bool         // 是否包含表单参数
-	Pool         *sync.Pool   // 对象池
-	CreatedAt    time.Time    // 缓存创建时间
+	ElemType reflect.Type // 元素类型 (去除指针)
+	Fields   []FieldInfo  // 字段信息
+	Pool     *sync.Pool   // 对象池
 }
 
 // NewInstance 从对象池获取或创建新实例
@@ -72,7 +59,7 @@ func resetOperatorInstance(instance interface{}, info *OperatorTypeInfo) {
 
 		fieldValue := v.Field(field.Index)
 		if fieldValue.CanSet() {
-			fieldValue.Set(reflect.Zero(field.Type))
+			fieldValue.Set(reflect.Zero(field.StructField.Type))
 		}
 	}
 }
@@ -108,10 +95,8 @@ func parseOperatorType(operatorType reflect.Type) *OperatorTypeInfo {
 	elemType := operatorType.Elem()
 
 	info := &OperatorTypeInfo{
-		Type:      operatorType,
-		ElemType:  elemType,
-		Fields:    make([]FieldInfo, 0),
-		CreatedAt: time.Now(),
+		ElemType: elemType,
+		Fields:   make([]FieldInfo, 0),
 	}
 
 	// 创建对象池，用于复用操作符实例，减少GC压力
@@ -124,10 +109,6 @@ func parseOperatorType(operatorType reflect.Type) *OperatorTypeInfo {
 
 	// 解析字段信息，包括参数绑定标签、验证规则等
 	parseFields(elemType, info)
-
-	// 预计算Method和Path，避免运行时反复计算
-	// 这是一个重要的性能优化点
-	precomputeMethodAndPath(operatorType, info)
 
 	return info
 }
@@ -143,10 +124,8 @@ func parseFields(structType reflect.Type, info *OperatorTypeInfo) {
 		}
 
 		fieldInfo := FieldInfo{
-			Index: i,
-			Name:  field.Name,
-			Type:  field.Type,
-			Kind:  field.Type.Kind(),
+			Index:       i,
+			StructField: field, // 保存完整的 StructField，避免运行时反射
 		}
 
 		// 解析标签
@@ -162,71 +141,10 @@ func parseFields(structType reflect.Type, info *OperatorTypeInfo) {
 				// 默认使用小写首字母的字段名
 				fieldInfo.ParamName = toLowerFirst(field.Name)
 			}
-
-			// 解析验证规则
-			fieldInfo.Validation = field.Tag.Get("validate")
-
-			// 更新类型标志
-			updateTypeFlags(fieldInfo.In, info)
 		}
 
 		info.Fields = append(info.Fields, fieldInfo)
 	}
-}
-
-// updateTypeFlags 更新类型标志
-func updateTypeFlags(in string, info *OperatorTypeInfo) {
-	switch in {
-	case "path":
-		info.HasPathParam = true
-	case "query":
-		info.HasQuery = true
-	case "body":
-		info.HasBody = true
-	case "form", "multipart", "urlencoded":
-		info.HasForm = true
-	}
-}
-
-// precomputeMethodAndPath 预计算方法和路径
-func precomputeMethodAndPath(operatorType reflect.Type, info *OperatorTypeInfo) {
-	// 创建临时实例来获取Method和Path
-	instance := reflect.New(info.ElemType).Interface()
-
-	// 尝试获取Method
-	if methodDescriber, ok := instance.(interface{ Method() string }); ok {
-		info.Method = methodDescriber.Method()
-	}
-
-	// 尝试获取Path
-	if pathDescriber, ok := instance.(interface{ Path() string }); ok {
-		info.Path = pathDescriber.Path()
-		// 解析路径参数
-		info.PathParams = extractPathParams(info.Path)
-	}
-}
-
-// extractPathParams 提取路径参数
-func extractPathParams(path string) []string {
-	params := make([]string, 0)
-	parts := []rune(path)
-
-	for i := 0; i < len(parts); i++ {
-		if parts[i] == ':' {
-			// 找到参数名的结束位置
-			start := i + 1
-			end := start
-			for end < len(parts) && parts[end] != '/' && parts[end] != '?' {
-				end++
-			}
-			if end > start {
-				params = append(params, string(parts[start:end]))
-			}
-			i = end - 1
-		}
-	}
-
-	return params
 }
 
 // toLowerFirst 将首字母转换为小写

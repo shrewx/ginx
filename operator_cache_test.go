@@ -3,7 +3,6 @@ package ginx
 import (
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -67,14 +66,7 @@ func TestGetOperatorTypeInfo(t *testing.T) {
 	assert.Equal(t, info1, info2)
 
 	// 验证基本信息
-	assert.Equal(t, opType, info1.Type)
 	assert.Equal(t, opType.Elem(), info1.ElemType)
-	assert.Equal(t, "POST", info1.Method)
-	assert.Equal(t, "/api/test/:id", info1.Path)
-	assert.True(t, info1.HasPathParam)
-	assert.True(t, info1.HasQuery)
-	assert.True(t, info1.HasBody)
-	assert.Equal(t, []string{"id"}, info1.PathParams)
 
 	// 验证字段信息
 	assert.Len(t, info1.Fields, 4)
@@ -83,7 +75,7 @@ func TestGetOperatorTypeInfo(t *testing.T) {
 	var idField, nameField, emailField, bodyField *FieldInfo
 	for i := range info1.Fields {
 		field := &info1.Fields[i]
-		switch field.Name {
+		switch field.StructField.Name {
 		case "ID":
 			idField = field
 		case "Name":
@@ -99,8 +91,6 @@ func TestGetOperatorTypeInfo(t *testing.T) {
 	require.NotNil(t, idField)
 	assert.Equal(t, "path", idField.In)
 	assert.Equal(t, "id", idField.ParamName)
-	assert.Equal(t, "required", idField.Validation)
-	assert.Equal(t, reflect.String, idField.Kind)
 
 	// 验证Name字段
 	require.NotNil(t, nameField)
@@ -126,7 +116,6 @@ func TestGetOperatorTypeInfo_NonPointerType(t *testing.T) {
 	info := GetOperatorTypeInfo(opType)
 
 	require.NotNil(t, info)
-	assert.Equal(t, reflect.TypeOf((*TestOperator)(nil)), info.Type)
 	assert.Equal(t, reflect.TypeOf(TestOperator{}), info.ElemType)
 }
 
@@ -169,54 +158,17 @@ func TestParseFields(t *testing.T) {
 
 	require.NotNil(t, info)
 
-	// 验证类型标志
-	assert.True(t, info.HasQuery)
-	assert.True(t, info.HasForm)
-
 	// 查找不同类型的字段
 	fieldMap := make(map[string]FieldInfo)
 	for _, field := range info.Fields {
-		fieldMap[field.Name] = field
+		fieldMap[field.StructField.Name] = field
 	}
 
 	// 验证不同数据类型
 	stringField := fieldMap["StringField"]
-	assert.Equal(t, reflect.String, stringField.Kind)
 	assert.Equal(t, "str", stringField.ParamName)
-
 	intField := fieldMap["IntField"]
-	assert.Equal(t, reflect.Int, intField.Kind)
 	assert.Equal(t, "int_val", intField.ParamName)
-
-	floatField := fieldMap["FloatField"]
-	assert.Equal(t, reflect.Float64, floatField.Kind)
-
-	boolField := fieldMap["BoolField"]
-	assert.Equal(t, reflect.Bool, boolField.Kind)
-
-	sliceField := fieldMap["SliceField"]
-	assert.Equal(t, reflect.Slice, sliceField.Kind)
-}
-
-func TestExtractPathParams(t *testing.T) {
-	tests := []struct {
-		path     string
-		expected []string
-	}{
-		{"/api/users/:id", []string{"id"}},
-		{"/api/users/:id/posts/:postId", []string{"id", "postId"}},
-		{"/api/static/file", []string{}},
-		{"/api/:category/:id/details", []string{"category", "id"}},
-		{"/api/:id?param=value", []string{"id"}},
-		{"", []string{}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
-			result := extractPathParams(tt.path)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
 }
 
 func TestToLowerFirst(t *testing.T) {
@@ -238,31 +190,6 @@ func TestToLowerFirst(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
-}
-
-func TestUpdateTypeFlags(t *testing.T) {
-	info := &OperatorTypeInfo{}
-
-	updateTypeFlags("path", info)
-	assert.True(t, info.HasPathParam)
-
-	updateTypeFlags("query", info)
-	assert.True(t, info.HasQuery)
-
-	updateTypeFlags("body", info)
-	assert.True(t, info.HasBody)
-
-	updateTypeFlags("form", info)
-	assert.True(t, info.HasForm)
-
-	updateTypeFlags("multipart", info)
-	assert.True(t, info.HasForm)
-
-	updateTypeFlags("urlencoded", info)
-	assert.True(t, info.HasForm)
-
-	updateTypeFlags("unknown", info)
-	// 不应该改变任何标志
 }
 
 func TestClearCache(t *testing.T) {
@@ -325,19 +252,6 @@ func TestResetOperatorInstance(t *testing.T) {
 	assert.Equal(t, "", instance.Name)
 	assert.Equal(t, "", instance.Email)
 	assert.Equal(t, TestRequestBody{}, instance.Body)
-}
-
-func TestOperatorTypeInfo_CreatedAt(t *testing.T) {
-	ClearCache()
-
-	before := time.Now()
-	opType := reflect.TypeOf((*TestOperator)(nil))
-	info := GetOperatorTypeInfo(opType)
-	after := time.Now()
-
-	// 验证创建时间在合理范围内
-	assert.True(t, info.CreatedAt.After(before) || info.CreatedAt.Equal(before))
-	assert.True(t, info.CreatedAt.Before(after) || info.CreatedAt.Equal(after))
 }
 
 // 基准测试

@@ -1,4 +1,3 @@
-// Copy from github.com/gin-gonic/gin/binding/multipart_form_mapping
 // Copyright 2019 Gin Core Team. All rights reserved.
 // Use of this source code is governed by a MIT style
 // license that can be found in the LICENSE file.
@@ -72,4 +71,20 @@ func setArrayOfMultipartFormFiles(value reflect.Value, field reflect.StructField
 		}
 	}
 	return true, nil
+}
+
+// SetFieldByMultipart 直接绑定单个字段，使用 multipart 数据源
+// 支持文件上传和普通表单字段
+// value: 字段的 reflect.Value
+// field: 字段的 reflect.StructField
+// req: MultipartRequest（包含 MultipartForm）
+// tagValue: 参数名
+// opt: 设置选项
+func SetFieldByMultipart(value reflect.Value, field reflect.StructField, req *MultipartRequest, tagValue string, opt SetOptions) (isSet bool, err error) {
+	// 转换 SetOptions 为内部 setOptions
+	internalOpt := setOptions{
+		isDefaultExists: opt.isDefaultExists,
+		defaultValue:    opt.defaultValue,
+	}
+	return req.TrySet(value, field, tagValue, internalOpt)
 }

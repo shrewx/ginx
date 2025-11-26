@@ -1,100 +1,25 @@
 package ginx
 
 import (
-	"github.com/shrewx/ginx/pkg/utils"
-	"mime/multipart"
+	"github.com/bytedance/sonic"
+	"net/textproto"
 	"reflect"
-	"strconv"
 	"strings"
+
+	"github.com/shrewx/ginx/pkg/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/internal/binding"
 )
-
-// Validate 使用缓存的类型信息进行快速验证和绑定
-// 这是一个兼容现有gin binding系统的高性能绑定函数，
-// 利用预解析的类型信息避免反射开销，提升绑定性能
-func Validate(ctx *gin.Context, router interface{}, typeInfo *OperatorTypeInfo) error {
-	v := reflect.ValueOf(router).Elem()
-	tagMap := make(map[string]bool, 0)
-
-	// 使用缓存的字段信息进行绑定，避免运行时反射解析
-	for _, field := range typeInfo.Fields {
-		if field.In == "" {
-			continue // 跳过没有绑定标记的字段
-		}
-
-		fieldValue := v.Field(field.Index)
-		if !fieldValue.CanSet() {
-			continue
-		}
-
-		// 处理body字段的特殊逻辑
-		// 为body字段设置JSON标签，用于后续的错误处理和日志记录
-		if field.In == "body" {
-			tag := utils.FirstLower(field.Name)
-			if jsonTag := field.Type.Field(0).Tag.Get("json"); jsonTag != "" {
-				tag = jsonTag
-			}
-			ctx.Set("tag", tag)
-		}
-
-		// 使用原有的binding逻辑，但避免重复绑定
-		// multipart和form允许重复绑定，因为它们可能包含不同的字段
-		if !tagMap[field.In] || field.In == "multipart" || field.In == "form" {
-			bind := getBinding(field.In, ctx.ContentType())
-			if err := bind.Bind(ctx, router); err != nil {
-				return err
-			}
-			tagMap[field.In] = true
-		}
-	}
-
-	return binding.Validator.ValidateStruct(router)
-}
-
-// getBinding 获取对应的绑定器（复制自internal/binding/binding.go的逻辑）
-func getBinding(in, contentType string) binding.Binding {
-	switch in {
-	case "query":
-		return binding.Query
-	case "path":
-		return binding.Path
-	case "urlencoded":
-		return binding.FormPost
-	case "form", "multipart":
-		return binding.FormMultipart
-	case "header":
-		return binding.Header
-	}
-
-	switch contentType {
-	case "application/json":
-		return binding.JSON
-	case "application/xml", "text/xml":
-		return binding.XML
-	case "application/x-protobuf":
-		return binding.ProtoBuf
-	case "application/x-msgpack", "application/msgpack":
-		return binding.MsgPack
-	case "application/x-yaml":
-		return binding.YAML
-	case "application/toml":
-		return binding.TOML
-	case "application/x-www-form-urlencoded":
-		return binding.FormPost
-	case "multipart/form-data":
-		return binding.FormMultipart
-	default:
-		return binding.Form
-	}
-}
 
 // ParameterBinding 快速参数绑定（更细粒度的控制）
 // 相比Validate函数，这个函数提供更精确的字段级别绑定控制，
 // 支持更多的参数来源类型，包括cookies等。性能更高但功能更专一。
 func ParameterBinding(ctx *gin.Context, router interface{}, typeInfo *OperatorTypeInfo) error {
 	v := reflect.ValueOf(router).Elem()
+	paramsMap := make(map[string]interface{})
+	// 从 ctx 中获取是否需要注入参数的标志
+	injectParams := ctx.GetBool(InjectParamsKey)
 
 	// 使用缓存的字段信息进行直接绑定
 	// 每个字段根据其in标签选择对应的绑定策略
@@ -122,6 +47,11 @@ func ParameterBinding(ctx *gin.Context, router interface{}, typeInfo *OperatorTy
 			err = bindFormParam(ctx, fieldValue, field)
 		case "multipart":
 			err = bindMultipartParam(ctx, fieldValue, field)
+			if err != nil {
+				return err
+			}
+			// multipart 字段不保存到 map 中
+			continue
 		case "urlencoded":
 			err = bindURLEncodedParam(ctx, fieldValue, field)
 		case "body":
@@ -133,6 +63,32 @@ func ParameterBinding(ctx *gin.Context, router interface{}, typeInfo *OperatorTy
 		if err != nil {
 			return err
 		}
+
+		if injectParams {
+			// 将绑定后的参数保存到 map 中
+			// 使用 field.ParamName 作为 key
+			if field.In == "body" {
+				// body 字段使用反射直接转换为 map，避免 JSON marshal/unmarshal 的性能开销
+				if fieldValue.IsValid() && !fieldValue.IsZero() {
+					if bodyMap := structToMap(fieldValue, false); bodyMap != nil {
+						// 将 body 的内容展开到 paramsMap 中
+						for k, v := range bodyMap {
+							paramsMap[k] = v
+						}
+					}
+				}
+			} else {
+				// 其他字段直接使用 Interface() 获取值
+				if fieldValue.IsValid() {
+					paramsMap[field.ParamName] = fieldValue.Interface()
+				}
+			}
+		}
+	}
+
+	// 将解析后的参数 map 保存到 ctx 中
+	if len(paramsMap) > 0 {
+		ctx.Set(ParsedParamsKey, paramsMap)
 	}
 
 	return binding.Validator.ValidateStruct(router)
@@ -145,68 +101,84 @@ func bindPathParam(ctx *gin.Context, fieldValue reflect.Value, field FieldInfo) 
 		return nil
 	}
 
-	return setFieldValue(fieldValue, value, field.Kind)
+	form := map[string][]string{field.ParamName: {value}}
+	opt := binding.ParseSetOptions(field.StructField)
+	_, err := binding.SetFieldByForm(fieldValue, field.StructField, form, field.ParamName, opt)
+	return err
 }
 
 // bindQueryParam 绑定查询参数
 func bindQueryParam(ctx *gin.Context, fieldValue reflect.Value, field FieldInfo) error {
-	value := ctx.Query(field.ParamName)
-	if value == "" {
+	query := ctx.Request.URL.Query()
+	if len(query[field.ParamName]) == 0 {
 		return nil
 	}
 
-	return setFieldValue(fieldValue, value, field.Kind)
+	opt := binding.ParseSetOptions(field.StructField)
+	_, err := binding.SetFieldByForm(fieldValue, field.StructField, query, field.ParamName, opt)
+	return err
 }
 
 // bindHeaderParam 绑定请求头参数
 func bindHeaderParam(ctx *gin.Context, fieldValue reflect.Value, field FieldInfo) error {
-	value := ctx.GetHeader(field.ParamName)
-	if value == "" {
+	// Header 名称需要规范化
+	canonicalKey := textproto.CanonicalMIMEHeaderKey(field.ParamName)
+	header := ctx.Request.Header
+	if len(header[canonicalKey]) == 0 {
 		return nil
 	}
 
-	return setFieldValue(fieldValue, value, field.Kind)
+	opt := binding.ParseSetOptions(field.StructField)
+	_, err := binding.SetFieldByForm(fieldValue, field.StructField, header, canonicalKey, opt)
+	return err
 }
 
 // bindFormParam 绑定表单参数
 func bindFormParam(ctx *gin.Context, fieldValue reflect.Value, field FieldInfo) error {
-	value := ctx.PostForm(field.ParamName)
-	if value == "" {
+	// 确保 ParseForm 已调用
+	if err := ctx.Request.ParseForm(); err != nil {
+		return err
+	}
+
+	postForm := ctx.Request.PostForm
+	if len(postForm[field.ParamName]) == 0 {
 		return nil
 	}
 
-	return setFieldValue(fieldValue, value, field.Kind)
+	opt := binding.ParseSetOptions(field.StructField)
+	_, err := binding.SetFieldByForm(fieldValue, field.StructField, postForm, field.ParamName, opt)
+	return err
 }
 
 // bindMultipartParam 绑定多部分表单参数
 func bindMultipartParam(ctx *gin.Context, fieldValue reflect.Value, field FieldInfo) error {
-	// 处理文件上传
-	if field.Type == reflect.TypeOf((*multipart.FileHeader)(nil)) {
-		file, err := ctx.FormFile(field.ParamName)
-		if err != nil {
-			return nil // 文件不存在不算错误
-		}
-		fieldValue.Set(reflect.ValueOf(file))
-		return nil
+	// 确保 ParseMultipartForm 已调用
+	const defaultMemory = 32 << 20
+	if err := ctx.Request.ParseMultipartForm(defaultMemory); err != nil {
+		return err
 	}
 
-	// 处理普通表单字段
-	value := ctx.PostForm(field.ParamName)
-	if value == "" {
-		return nil
-	}
-
-	return setFieldValue(fieldValue, value, field.Kind)
+	opt := binding.ParseSetOptions(field.StructField)
+	multipartReq := (*binding.MultipartRequest)(ctx.Request)
+	_, err := binding.SetFieldByMultipart(fieldValue, field.StructField, multipartReq, field.ParamName, opt)
+	return err
 }
 
 // bindURLEncodedParam 绑定URL编码参数
 func bindURLEncodedParam(ctx *gin.Context, fieldValue reflect.Value, field FieldInfo) error {
-	value := ctx.PostForm(field.ParamName)
-	if value == "" {
+	// 确保 ParseForm 已调用
+	if err := ctx.Request.ParseForm(); err != nil {
+		return err
+	}
+
+	postForm := ctx.Request.PostForm
+	if len(postForm[field.ParamName]) == 0 {
 		return nil
 	}
 
-	return setFieldValue(fieldValue, value, field.Kind)
+	opt := binding.ParseSetOptions(field.StructField)
+	_, err := binding.SetFieldByForm(fieldValue, field.StructField, postForm, field.ParamName, opt)
+	return err
 }
 
 // bindBodyParam 绑定请求体参数
@@ -235,41 +207,198 @@ func bindCookieParam(ctx *gin.Context, fieldValue reflect.Value, field FieldInfo
 		return nil // Cookie不存在不算错误
 	}
 
-	return setFieldValue(fieldValue, cookie, field.Kind)
+	form := map[string][]string{field.ParamName: {cookie}}
+	opt := binding.ParseSetOptions(field.StructField)
+	_, err = binding.SetFieldByForm(fieldValue, field.StructField, form, field.ParamName, opt)
+	return err
 }
 
-// setFieldValue 设置字段值 (类型转换)
-func setFieldValue(fieldValue reflect.Value, value string, kind reflect.Kind) error {
-	switch kind {
-	case reflect.String:
-		fieldValue.SetString(value)
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		if intVal, err := strconv.ParseInt(value, 10, 64); err == nil {
-			fieldValue.SetInt(intVal)
+// structToMap 使用反射将结构体转换为 map[string]interface{}
+// 相比 JSON marshal/unmarshal，这种方式性能更高，避免了序列化/反序列化的开销
+func structToMap(v reflect.Value, flattenNested bool) map[string]interface{} {
+	// 处理指针类型
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return nil
 		}
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		if uintVal, err := strconv.ParseUint(value, 10, 64); err == nil {
-			fieldValue.SetUint(uintVal)
+		v = v.Elem()
+	}
+
+	// 如果不是结构体，返回 nil
+	if v.Kind() != reflect.Struct {
+		return nil
+	}
+
+	result := make(map[string]interface{})
+	t := v.Type()
+
+	// 遍历结构体字段
+	for i := 0; i < v.NumField(); i++ {
+		field := t.Field(i)
+		fieldValue := v.Field(i)
+
+		// 跳过不可导出的字段
+		if !fieldValue.CanInterface() {
+			continue
 		}
-	case reflect.Float32, reflect.Float64:
-		if floatVal, err := strconv.ParseFloat(value, 64); err == nil {
-			fieldValue.SetFloat(floatVal)
+
+		// 获取字段名：优先使用 json tag，其次使用字段名（首字母小写）
+		fieldName := getFieldName(field)
+		if fieldName == "" || fieldName == "-" {
+			continue
 		}
-	case reflect.Bool:
-		if boolVal, err := strconv.ParseBool(value); err == nil {
-			fieldValue.SetBool(boolVal)
-		}
-	case reflect.Slice:
-		// 处理字符串切片 (如: ?tags=a,b,c 或 ?tags=a&tags=b&tags=c)
-		if fieldValue.Type().Elem().Kind() == reflect.String {
-			values := strings.Split(value, ",")
-			slice := reflect.MakeSlice(fieldValue.Type(), len(values), len(values))
-			for i, val := range values {
-				slice.Index(i).SetString(strings.TrimSpace(val))
+
+		// 处理指针字段
+		if fieldValue.Kind() == reflect.Ptr {
+			if fieldValue.IsNil() {
+				continue
 			}
-			fieldValue.Set(slice)
+			fieldValue = fieldValue.Elem()
+		}
+
+		// 处理嵌套结构体：递归展开
+		if fieldValue.Kind() == reflect.Struct {
+			if nestedMap := structToMap(fieldValue, false); nestedMap != nil {
+				if flattenNested {
+					for k, v := range nestedMap {
+						result[k] = v
+					}
+				} else {
+					result[fieldName] = nestedMap
+				}
+			}
+		} else if fieldValue.Kind() == reflect.Slice {
+			// 处理切片：如果元素是结构体，需要转换每个元素
+			convertedSlice := convertSliceToMap(fieldValue, false)
+			result[fieldName] = convertedSlice
+		} else if fieldValue.Kind() == reflect.Map {
+			// 处理 map：如果值是结构体，需要转换每个值
+			convertedMap := convertMapToMap(fieldValue, false)
+			result[fieldName] = convertedMap
+		} else {
+			// 普通字段直接添加
+			result[fieldName] = fieldValue.Interface()
 		}
 	}
 
+	return result
+}
+
+// convertSliceToMap 将切片转换为 []interface{}，如果元素是结构体则转换为 map
+func convertSliceToMap(sliceValue reflect.Value, flattenNested bool) interface{} {
+	if sliceValue.IsNil() || sliceValue.Len() == 0 {
+		return sliceValue.Interface()
+	}
+
+	elementType := sliceValue.Type().Elem()
+	// 如果元素是指针类型，获取指向的类型
+	if elementType.Kind() == reflect.Ptr {
+		elementType = elementType.Elem()
+	}
+
+	// 如果元素是结构体类型，需要转换每个元素
+	if elementType.Kind() == reflect.Struct {
+		result := make([]interface{}, sliceValue.Len())
+		for i := 0; i < sliceValue.Len(); i++ {
+			elem := sliceValue.Index(i)
+			// 处理指针元素
+			if elem.Kind() == reflect.Ptr {
+				if elem.IsNil() {
+					result[i] = nil
+					continue
+				}
+				elem = elem.Elem()
+			}
+			// 转换结构体为 map
+			if elemMap := structToMap(elem, flattenNested); elemMap != nil {
+				result[i] = elemMap
+			} else {
+				result[i] = elem.Interface()
+			}
+		}
+		return result
+	}
+
+	// 非结构体切片直接返回
+	return sliceValue.Interface()
+}
+
+// convertMapToMap 将 map 转换为 map[string]interface{}，如果值是结构体则转换为 map
+func convertMapToMap(mapValue reflect.Value, flattenNested bool) interface{} {
+	if mapValue.IsNil() || mapValue.Len() == 0 {
+		return mapValue.Interface()
+	}
+
+	valueType := mapValue.Type().Elem()
+	// 如果值是指针类型，获取指向的类型
+	if valueType.Kind() == reflect.Ptr {
+		valueType = valueType.Elem()
+	}
+
+	// 如果值是结构体类型，需要转换每个值
+	if valueType.Kind() == reflect.Struct {
+		result := make(map[string]interface{}, mapValue.Len())
+		for _, key := range mapValue.MapKeys() {
+			value := mapValue.MapIndex(key)
+			// 处理指针值
+			if value.Kind() == reflect.Ptr {
+				if value.IsNil() {
+					result[key.String()] = nil
+					continue
+				}
+				value = value.Elem()
+			}
+			// 转换结构体为 map
+			if valueMap := structToMap(value, flattenNested); valueMap != nil {
+				result[key.String()] = valueMap
+			} else {
+				result[key.String()] = value.Interface()
+			}
+		}
+		return result
+	}
+
+	// 非结构体 map 直接返回
+	return mapValue.Interface()
+}
+
+// getFieldName 获取字段的 JSON 标签名，如果没有则返回首字母小写的字段名
+func getFieldName(field reflect.StructField) string {
+	jsonTag := field.Tag.Get("name")
+	if jsonTag == "" {
+		jsonTag = field.Tag.Get("json")
+	}
+	if jsonTag != "" {
+		// 处理 json tag 中的选项，如 "name,omitempty"
+		if idx := strings.Index(jsonTag, ","); idx != -1 {
+			jsonTag = jsonTag[:idx]
+		}
+		if jsonTag != "" && jsonTag != "-" {
+			return jsonTag
+		}
+	}
+	// 如果没有 json tag，使用首字母小写的字段名
+	return utils.FirstLower(field.Name)
+}
+
+func GetParsedParams(ctx *gin.Context) map[string]interface{} {
+	if value, exists := ctx.Get(ParsedParamsKey); exists {
+		return value.(map[string]interface{})
+	}
 	return nil
+}
+
+func BindParsedParams(ctx *gin.Context, v interface{}) {
+	parsedParams := GetParsedParams(ctx)
+	if parsedParams == nil {
+		return
+	}
+	data, err := sonic.Marshal(parsedParams)
+	if err != nil {
+		return
+	}
+	err = sonic.Unmarshal(data, v)
+	if err != nil {
+		return
+	}
 }

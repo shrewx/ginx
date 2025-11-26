@@ -11,7 +11,11 @@ const (
 	DefaultConfig = "config.yml"
 )
 
-const OperationName = "x-operation-name"
+const (
+	OperationName   = "x-operation-name"
+	ParsedParamsKey = "x-parsed-params"
+	InjectParamsKey = "x-inject-params"
+)
 
 // https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types
 const (
