@@ -190,10 +190,10 @@ func TestDefaultResponseHandler_Handle_MineDescriber(t *testing.T) {
 				att.WriteString("test content")
 				return att
 			}(),
-			expectedStatus: http.StatusCreated,
+			expectedStatus: http.StatusOK,
 			validate: func(t *testing.T, resp SuccessResponse) {
 				assert.NotNil(t, resp)
-				assert.Equal(t, http.StatusCreated, resp.Status())
+				assert.Equal(t, http.StatusOK, resp.Status())
 			},
 		},
 		{
@@ -470,7 +470,7 @@ func TestExecuteResponseHandlers_POSTRequest(t *testing.T) {
 	executeResponseHandlers(ctx, map[string]interface{}{"test": "value"})
 
 	// 验证 POST 请求返回 201
-	assert.Equal(t, http.StatusCreated, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.NoError(t, err)

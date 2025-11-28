@@ -1,7 +1,6 @@
 package ginx
 
 import (
-	"github.com/bytedance/sonic"
 	"net/textproto"
 	"reflect"
 	"strings"
@@ -17,7 +16,8 @@ import (
 // 支持更多的参数来源类型，包括cookies等。性能更高但功能更专一。
 func ParameterBinding(ctx *gin.Context, router interface{}, typeInfo *OperatorTypeInfo) error {
 	v := reflect.ValueOf(router).Elem()
-	paramsMap := make(map[string]interface{})
+	// 按 in 类型分类存储参数：{"body": {}, "path": {}, "query": {}, "form": {}}
+	paramsMap := make(map[string]map[string]interface{})
 	// 从 ctx 中获取是否需要注入参数的标志
 	injectParams := ctx.GetBool(InjectParamsKey)
 
@@ -65,30 +65,43 @@ func ParameterBinding(ctx *gin.Context, router interface{}, typeInfo *OperatorTy
 		}
 
 		if injectParams {
-			// 将绑定后的参数保存到 map 中
-			// 使用 field.ParamName 作为 key
-			if field.In == "body" {
-				// body 字段使用反射直接转换为 map，避免 JSON marshal/unmarshal 的性能开销
-				if fieldValue.IsValid() && !fieldValue.IsZero() {
-					if bodyMap := structToMap(fieldValue, false); bodyMap != nil {
-						// 将 body 的内容展开到 paramsMap 中
-						for k, v := range bodyMap {
-							paramsMap[k] = v
+			// 确定参数分类：form 和 urlencoded 统一归并到 form
+			inType := field.In
+			if inType == "urlencoded" {
+				inType = "form"
+			}
+
+			// 初始化对应分类的 map（如果不存在）
+			if _, ok := paramsMap[inType]; !ok {
+				paramsMap[inType] = make(map[string]interface{})
+			}
+
+			// 将参数存储到对应的分类下
+			if fieldValue.IsValid() {
+				if inType == "body" {
+					// body 字段：如果非零值则存储
+					if !fieldValue.IsZero() {
+						if bodyMap := structToMap(fieldValue, false); bodyMap != nil {
+							for k, v := range bodyMap {
+								paramsMap[inType][k] = v
+							}
 						}
 					}
-				}
-			} else {
-				// 其他字段直接使用 Interface() 获取值
-				if fieldValue.IsValid() {
-					paramsMap[field.ParamName] = fieldValue.Interface()
+				} else {
+					// 其他字段直接存储
+					paramsMap[inType][field.ParamName] = fieldValue.Interface()
 				}
 			}
 		}
 	}
 
 	// 将解析后的参数 map 保存到 ctx 中
-	if len(paramsMap) > 0 {
-		ctx.Set(ParsedParamsKey, paramsMap)
+	if injectParams && len(paramsMap) > 0 {
+		var params = make(map[string]interface{})
+		for inType, value := range paramsMap {
+			params[inType] = value
+		}
+		ctx.Set(ParsedParamsKey, params)
 	}
 
 	return binding.Validator.ValidateStruct(router)
@@ -381,24 +394,13 @@ func getFieldName(field reflect.StructField) string {
 	return utils.FirstLower(field.Name)
 }
 
+func InjectParsedParams(ctx *gin.Context) {
+	ctx.Set(InjectParamsKey, true)
+}
+
 func GetParsedParams(ctx *gin.Context) map[string]interface{} {
 	if value, exists := ctx.Get(ParsedParamsKey); exists {
 		return value.(map[string]interface{})
 	}
 	return nil
-}
-
-func BindParsedParams(ctx *gin.Context, v interface{}) {
-	parsedParams := GetParsedParams(ctx)
-	if parsedParams == nil {
-		return
-	}
-	data, err := sonic.Marshal(parsedParams)
-	if err != nil {
-		return
-	}
-	err = sonic.Unmarshal(data, v)
-	if err != nil {
-		return
-	}
 }

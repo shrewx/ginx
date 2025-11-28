@@ -9,11 +9,11 @@ type Log struct {
 	MaxBackups        int    `yaml:"max_backups" env:"LOG_MAX_BACKUPS"`
 	Compress          bool   `yaml:"log_compress" env:"LOG_COMPRESS"`
 	DisableHTMLEscape bool   `yaml:"disable_html_escape" env:"LOG_DISABLE_HTML_ESCAPE"`
-	DisableQuote      bool   `yaml:"disable_quote" env:"LOG_DISABLE_QUOTE"`
+	EnableQuote       bool   `yaml:"enable_quote" env:"LOG_ENABLE_QUOTE"`
 
 	ToStdout bool `yaml:"to_stdout" env:"LOG_TO_STDOUT"`
 	IsJson   bool `yaml:"is_json" env:"LOG_IS_JSON"`
-	
+
 	EnableCaller bool `yaml:"enable_caller" env:"LOG_ENABLE_CALLER"`
 	NoStack      bool `yaml:"no_stack" env:"LOG_NO_STACK"`
 }

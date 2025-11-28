@@ -34,7 +34,7 @@ func load(c *conf.Log) *logrus.Logger {
 	} else {
 		logger.SetFormatter(&logrus.TextFormatter{
 			DisableColors:    true,
-			DisableQuote:     c.DisableQuote,
+			DisableQuote:     !c.EnableQuote,
 			FullTimestamp:    true,
 			QuoteEmptyFields: false,
 			PadLevelText:     false,

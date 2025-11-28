@@ -87,3 +87,10 @@ type EmptyOperator struct{}
 func (e *EmptyOperator) Output(ctx *gin.Context) (interface{}, error) { return nil, nil }
 func (e *EmptyOperator) Before(ctx *gin.Context) error                { return nil }
 func (e *EmptyOperator) After(ctx *gin.Context) error                 { return nil }
+
+type EmptyMiddlewareOperator struct{}
+
+func (e *EmptyMiddlewareOperator) Output(ctx *gin.Context) (interface{}, error) { return nil, nil }
+func (e *EmptyMiddlewareOperator) Before(ctx *gin.Context) error                { return nil }
+func (e *EmptyMiddlewareOperator) After(ctx *gin.Context) error                 { return nil }
+func (e *EmptyMiddlewareOperator) Type() string                                 { return Middleware }

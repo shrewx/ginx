@@ -118,11 +118,6 @@ func parseFields(structType reflect.Type, info *OperatorTypeInfo) {
 	for i := 0; i < structType.NumField(); i++ {
 		field := structType.Field(i)
 
-		// 跳过嵌入的方法字段 (如 MethodGet)
-		if field.Anonymous {
-			continue
-		}
-
 		fieldInfo := FieldInfo{
 			Index:       i,
 			StructField: field, // 保存完整的 StructField，避免运行时反射

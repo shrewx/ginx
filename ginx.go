@@ -122,7 +122,9 @@ func RunServer(config *conf.Server, r *GinRouter) {
 
 	// init i18n
 	if config.I18N == nil {
-		config.I18N = &conf.I18N{}
+		config.I18N = &conf.I18N{
+			Langs: []string{I18nEN, I18nZH},
+		}
 	}
 	i18nx.Load(config.I18N)
 

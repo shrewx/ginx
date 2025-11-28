@@ -220,7 +220,7 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 		}
 
 		// 显示参数绑定日志
-		showParameterBinding(ctx, typeInfo)
+		showParameterBinding(typeInfo.ElemType.Name(), operator)
 
 		// 执行业务逻辑
 		result, err := operator.Output(ctx)
@@ -243,14 +243,13 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 	}
 }
 
-func showParameterBinding(ctx *gin.Context, typeInfo *OperatorTypeInfo) {
-	if value, exists := ctx.Get(ParsedParamsKey); exists {
-		if showParams {
-			logx.Infof("Parse %s params : %+v", typeInfo.ElemType.Name(), value)
-		} else {
-			logx.Debugf("Parse %s params : %+v", typeInfo.ElemType.Name(), value)
-		}
+func showParameterBinding(name string, operator Operator) {
+	if showParams {
+		logx.Infof("Parse %s params : %+v", name, operator)
+	} else {
+		logx.Debugf("Parse %s params : %+v", name, operator)
 	}
+
 }
 
 func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {

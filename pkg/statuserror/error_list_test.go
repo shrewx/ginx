@@ -240,3 +240,11 @@ func (m *mockCommonError) Localize(manager *i18nx.Localize, lang string) i18nx.I
 func (m *mockCommonError) Value() string {
 	return m.msg
 }
+
+func (m *mockCommonError) Key() string {
+	return m.key
+}
+
+func (m *mockCommonError) Prefix() string {
+	return ""
+}
