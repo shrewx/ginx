@@ -36,6 +36,11 @@ func containsGinx(typ types.Type) bool {
 	return strings.Contains(typ.String(), pkgImportGinx)
 }
 
+func isGinxOperatorType(typ types.Type) bool {
+	typStr := typ.String()
+	return strings.Contains(typStr, pkgImportGinx+".Operator") || strings.HasSuffix(typStr, pkgImportGinx+".Operator")
+}
+
 func tagValueAndFlagsByTagString(tagString string) (string, map[string]bool) {
 	valueAndFlags := strings.Split(tagString, ",")
 	v := valueAndFlags[0]

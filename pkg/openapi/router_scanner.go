@@ -3,14 +3,15 @@ package openapi
 import (
 	"bytes"
 	"context"
-	"github.com/go-courier/packagesx"
-	"github.com/julienschmidt/httprouter"
 	"go/ast"
 	"go/types"
-	"golang.org/x/tools/go/packages"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/go-courier/packagesx"
+	"github.com/julienschmidt/httprouter"
+	"golang.org/x/tools/go/packages"
 )
 
 type RouterScanner struct {
@@ -54,6 +55,7 @@ func (scanner *RouterScanner) init() {
 		}
 	}
 
+	// 处理直接的 Router.Register() 调用
 	for _, pkg := range scanner.pkg.AllPackages {
 		for selectExpr, selection := range pkg.TypesInfo.Selections {
 			if selection.Obj() != nil {
@@ -66,39 +68,7 @@ func (scanner *RouterScanner) init() {
 								if typeVar == pkg.TypesInfo.ObjectOf(packagesx.GetIdentChainOfCallFunc(selectExpr)[0]) {
 									file := scanner.pkg.FileOf(selectExpr)
 									ast.Inspect(file, func(node ast.Node) bool {
-										switch node.(type) {
-										case *ast.CallExpr:
-											callExpr := node.(*ast.CallExpr)
-											if callExpr.Fun == selectExpr {
-												routerIdent := callExpr.Args[0]
-												switch v := routerIdent.(type) {
-												case *ast.SelectorExpr:
-													argTypeVar := pkg.TypesInfo.ObjectOf(v.Sel).(*types.Var)
-													if r, ok := scanner.routers[argTypeVar]; ok {
-														router.Register(r)
-													}
-												}
-											}
-										case *ast.ExprStmt:
-											exprStmt := node.(*ast.ExprStmt)
-											if callExpr, ok := exprStmt.X.(*ast.CallExpr); ok {
-												if callExpr.Fun == selectExpr {
-													// parse Router.Register() argTypeVar ==> Router
-													argTypeVar := pkg.TypesInfo.ObjectOf(callExpr.Fun.(*ast.SelectorExpr).X.(*ast.Ident)).(*types.Var)
-													if r, ok := scanner.routers[argTypeVar]; ok {
-														switch a := callExpr.Args[0].(type) {
-														case *ast.UnaryExpr:
-															// for middleware
-															if scanner.checkMiddleware(pkg, a) {
-																r.AppendOperators(scanner.OperatorTypeNamesFromArgs(packagesx.NewPackage(pkg), callExpr.Args...)...)
-															} else {
-																r.With(scanner.OperatorTypeNamesFromArgs(packagesx.NewPackage(pkg), callExpr.Args...)...)
-															}
-														}
-													}
-												}
-											}
-										}
+										scanner.processRegisterCall(pkg, node, selectExpr, router)
 										return true
 									})
 								}
@@ -109,6 +79,117 @@ func (scanner *RouterScanner) init() {
 			}
 		}
 	}
+
+	// 处理 init() 函数中通过包装函数注册的情况
+	// 例如: func init() { RegisterRouter(&AddHttpDialRoute{}) }
+	// 其中 RegisterRouter 函数内部调用 Router.Register(operator)
+	for _, pkg := range scanner.pkg.AllPackages {
+		for _, obj := range pkg.TypesInfo.Defs {
+			if typeFunc, ok := obj.(*types.Func); ok {
+				if typeFunc.Name() == "init" {
+					funcDecl := scanner.pkg.FuncDeclOf(typeFunc)
+					if funcDecl != nil {
+						ast.Inspect(funcDecl, func(node ast.Node) bool {
+							if callExpr, ok := node.(*ast.CallExpr); ok {
+								// 检查是否是函数调用（不是方法调用）
+								if ident, ok := callExpr.Fun.(*ast.Ident); ok {
+									if callObj := pkg.TypesInfo.ObjectOf(ident); callObj != nil {
+										if wrapperFunc, ok := callObj.(*types.Func); ok {
+											// 检查函数签名：只有一个参数，且参数类型是 ginx.Operator
+											sig := wrapperFunc.Type().(*types.Signature)
+											if sig.Params().Len() == 1 {
+												paramType := sig.Params().At(0).Type()
+												if isGinxOperatorType(paramType) {
+													// 找到包装函数的定义
+													wrapperPkg := packagesx.NewPackage(scanner.pkg.Pkg(wrapperFunc.Pkg().Path()))
+													wrapperFuncDecl := wrapperPkg.FuncDeclOf(wrapperFunc)
+													if wrapperFuncDecl != nil {
+														// 从 init() 调用中获取 operator 参数
+														if len(callExpr.Args) > 0 {
+															operatorArg := callExpr.Args[0]
+															operators := scanner.OperatorTypeNamesFromArgs(packagesx.NewPackage(pkg), operatorArg)
+															if len(operators) > 0 {
+																// 在包装函数内部查找 Router.Register() 调用
+																scanner.processRegisterCallInWrapper(wrapperPkg, wrapperFuncDecl, operators)
+															}
+														}
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+							return true
+						})
+					}
+				}
+			}
+		}
+	}
+}
+
+// processRegisterCall 处理 Router.Register() 调用
+func (scanner *RouterScanner) processRegisterCall(pkg *packages.Package, node ast.Node, selectExpr *ast.SelectorExpr, router *Router) {
+	switch node.(type) {
+	case *ast.CallExpr:
+		callExpr := node.(*ast.CallExpr)
+		if callExpr.Fun == selectExpr {
+			routerIdent := callExpr.Args[0]
+			switch v := routerIdent.(type) {
+			case *ast.SelectorExpr:
+				argTypeVar := pkg.TypesInfo.ObjectOf(v.Sel).(*types.Var)
+				if r, ok := scanner.routers[argTypeVar]; ok {
+					router.Register(r)
+				}
+			}
+		}
+	case *ast.ExprStmt:
+		exprStmt := node.(*ast.ExprStmt)
+		if callExpr, ok := exprStmt.X.(*ast.CallExpr); ok {
+			if callExpr.Fun == selectExpr {
+				// parse Router.Register() argTypeVar ==> Router
+				argTypeVar := pkg.TypesInfo.ObjectOf(callExpr.Fun.(*ast.SelectorExpr).X.(*ast.Ident)).(*types.Var)
+				if r, ok := scanner.routers[argTypeVar]; ok {
+					switch a := callExpr.Args[0].(type) {
+					case *ast.UnaryExpr:
+						// for middleware
+						if scanner.checkMiddleware(pkg, a) {
+							r.AppendOperators(scanner.OperatorTypeNamesFromArgs(packagesx.NewPackage(pkg), callExpr.Args...)...)
+						} else {
+							r.With(scanner.OperatorTypeNamesFromArgs(packagesx.NewPackage(pkg), callExpr.Args...)...)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// processRegisterCallInWrapper 在包装函数内部查找并处理 Router.Register() 调用
+func (scanner *RouterScanner) processRegisterCallInWrapper(wrapperPkg *packagesx.Package, wrapperFuncDecl *ast.FuncDecl, operators []*OperatorWithTypeName) {
+	ast.Inspect(wrapperFuncDecl, func(n ast.Node) bool {
+		if exprStmt, ok := n.(*ast.ExprStmt); ok {
+			if innerCallExpr, ok := exprStmt.X.(*ast.CallExpr); ok {
+				if selectorExpr, ok := innerCallExpr.Fun.(*ast.SelectorExpr); ok {
+					if selectorExpr.Sel.Name == "Register" {
+						// 找到 Router.Register() 调用
+						if routerIdent, ok := selectorExpr.X.(*ast.Ident); ok {
+							if routerObj := wrapperPkg.TypesInfo.ObjectOf(routerIdent); routerObj != nil {
+								if routerVar, ok := routerObj.(*types.Var); ok {
+									if router, ok := scanner.routers[routerVar]; ok {
+										// 将 operator 注册到 router
+										router.With(operators...)
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		return true
+	})
 }
 
 func (scanner *RouterScanner) checkMiddleware(pkg *packages.Package, expr *ast.UnaryExpr) bool {

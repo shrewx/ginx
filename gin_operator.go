@@ -281,6 +281,17 @@ func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
 			return
 		}
 
+		// 执行验证器
+		if typeInfo.HasValidator {
+			if validator, ok := middlewareOp.(Validator); ok {
+				if err := validator.Validate(ctx); err != nil {
+					executeErrorHandlers(err, ctx)
+					ctx.Abort()
+					return
+				}
+			}
+		}
+
 		switch mw := middlewareOp.(type) {
 		case MiddlewareOperator:
 			// 先检查 MiddlewareOperator（因为它继承自 TypeOperator）

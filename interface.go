@@ -9,6 +9,10 @@ type Operator interface {
 	Output(ctx *gin.Context) (interface{}, error)
 }
 
+type Validator interface {
+	Validate(ctx *gin.Context) error
+}
+
 type PathDescriber interface {
 	Path() string
 }
