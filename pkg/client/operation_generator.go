@@ -140,7 +140,7 @@ if err = response.Bind(resp); err != nil {
 		codegen.Func(
 			codegen.Var(codegen.Type(g.File.Use("context", "Context")), "ctx"),
 			codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "Client")), "c"),
-			codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "RequestConfig")), "config"),
+			codegen.Var(codegen.Star(codegen.Type(g.File.Use(ginxModulePath, "RequestConfig"))), "config"),
 		).
 			Return(
 				codegen.Var(codegen.Error),
