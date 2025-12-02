@@ -826,9 +826,6 @@ func (operator *Operator) BindOperation(method string, operation *oas.Operation,
 			status := operator.SuccessStatus
 			if status == 0 {
 				status = http.StatusOK
-				if method == http.MethodPost {
-					status = http.StatusCreated
-				}
 			}
 			if status >= http.StatusMultipleChoices && status < http.StatusBadRequest {
 				operator.SuccessResponse = oas.NewResponse(operator.SuccessResponse.Description)
