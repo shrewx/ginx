@@ -219,6 +219,17 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 			return
 		}
 
+		// 执行验证器
+		if typeInfo.HasValidator {
+			if validator, ok := operator.(Validator); ok {
+				if err := validator.Validate(ctx); err != nil {
+					executeErrorHandlers(err, ctx)
+					ctx.Abort()
+					return
+				}
+			}
+		}
+
 		// 显示参数绑定日志
 		showParameterBinding(typeInfo.ElemType.Name(), operator)
 
