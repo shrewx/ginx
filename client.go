@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -401,8 +400,10 @@ func (r *Result) Bind(body interface{}) error {
 	}
 	statusErr := &statuserror.StatusErr{}
 	err = json.Unmarshal(data, statusErr)
-	if err != nil {
-		return errors.New("failed to bind body or err")
+
+	// 如果解析失败或返回空结构体，返回 RemoteHTTPError
+	if err != nil || statusErr.K == "" && statusErr.ErrorCode == 0 && statusErr.Message == "" {
+		return NewRemoteHTTPError(r.Response.StatusCode, r.Response.Header, data, r.Response.Header.Get("Content-Type"))
 	}
 
 	return statusErr
