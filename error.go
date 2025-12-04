@@ -168,6 +168,8 @@ func executeErrorHandlers(err error, ctx *gin.Context) {
 	operationName, _ := ctx.Get(OperationName)
 	logx.WithFields(logrus.Fields{logrus.ErrorKey: err}).Errorf("handle %s request failed", operationName)
 
+	ctx.Set(ResponseErrorKey, err)
+
 	var response ErrorResponse
 
 	// 1. 先执行用户注册的错误处理器
@@ -212,6 +214,13 @@ func abortWithResponse(ctx *gin.Context, statusCode int, contentType string, bod
 
 func WithStack(error error) error {
 	return errors.WithStack(error)
+}
+
+func GetResponseError(ctx *gin.Context) error {
+	if value, exists := ctx.Get(ResponseErrorKey); exists {
+		return value.(error)
+	}
+	return nil
 }
 
 // ClientResponseError 表示一个可将下游 HTTP 响应原样透传给客户端的错误

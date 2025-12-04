@@ -188,7 +188,7 @@ func collectOperators(r *GinRouter, operators *[]interface{}) {
 // 3. 业务逻辑执行 - 调用操作符的Output方法
 // 4. 响应处理 - 根据返回类型选择合适的响应方式
 // 5. 错误处理 - 统一的错误处理和状态码映射
-func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
+func ginHandleFuncWrapper(op HandleOperator) gin.HandlerFunc {
 	// 预先获取操作符类型信息，避免每次请求都进行反射
 	opType := reflect.TypeOf(op)
 	typeInfo := GetOperatorTypeInfo(opType)
@@ -196,7 +196,7 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		// 从对象池获取实例，减少内存分配开销
 		instance := typeInfo.NewInstance()
-		operator, ok := instance.(Operator)
+		operator, ok := instance.(HandleOperator)
 		if !ok {
 			executeErrorHandlers(e2.InternalServerError, ctx)
 			return
@@ -220,14 +220,10 @@ func ginHandleFuncWrapper(op Operator) gin.HandlerFunc {
 		}
 
 		// 执行验证器
-		if typeInfo.HasValidator {
-			if validator, ok := operator.(Validator); ok {
-				if err := validator.Validate(ctx); err != nil {
-					executeErrorHandlers(err, ctx)
-					ctx.Abort()
-					return
-				}
-			}
+		if err := operator.Validate(ctx); err != nil {
+			executeErrorHandlers(err, ctx)
+			ctx.Abort()
+			return
 		}
 
 		// 显示参数绑定日志
@@ -290,17 +286,6 @@ func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
 			executeErrorHandlers(err, ctx)
 			ctx.Abort()
 			return
-		}
-
-		// 执行验证器
-		if typeInfo.HasValidator {
-			if validator, ok := middlewareOp.(Validator); ok {
-				if err := validator.Validate(ctx); err != nil {
-					executeErrorHandlers(err, ctx)
-					ctx.Abort()
-					return
-				}
-			}
 		}
 
 		switch mw := middlewareOp.(type) {

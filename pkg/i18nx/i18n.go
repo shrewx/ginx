@@ -3,6 +3,7 @@ package i18nx
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/pkg/errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,6 +79,7 @@ func Load(c *conf.I18N) {
 			bundle.RegisterUnmarshalFunc("json", json.Unmarshal)
 		case "YAML":
 			bundle.RegisterUnmarshalFunc("yaml", yaml.Unmarshal)
+			bundle.RegisterUnmarshalFunc("yml", yaml.Unmarshal)
 		default:
 			panic(fmt.Errorf("unmarshal type %s is not support", c.UnmarshalType))
 		}
@@ -86,10 +88,24 @@ func Load(c *conf.I18N) {
 	// 加载多个路径的文件
 	if len(c.Paths) > 0 {
 		for _, path := range c.Paths {
-			if path != "" && pathExist(path) {
-				err := loadPathFiles(path)
+			if path == "" {
+				continue
+			}
+
+			info, err := os.Stat(path)
+			if err != nil {
+				continue
+			}
+
+			if info.IsDir() {
+				// 如果是目录，遍历加载目录下的所有文件
+				err := loadPathFiles(path, c.UnmarshalType)
 				if err != nil {
 					panic(fmt.Errorf("load i18n files from path %s fail, err: %s", path, err.Error()))
+				}
+			} else if info.Mode().IsRegular() {
+				if err := loadMessageFile(path, c.UnmarshalType); err != nil {
+					panic(fmt.Errorf("load i18n file from path %s fail, err: %s", path, err.Error()))
 				}
 			}
 		}
@@ -101,8 +117,34 @@ func Load(c *conf.I18N) {
 	}
 }
 
+func loadI18nFromYAML(bundle *i18n.Bundle, path string) error {
+	buf, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	lang, err := parseLangFromContent(buf)
+	if err != nil {
+		return err
+	}
+
+	_, err = bundle.ParseMessageFileBytes(buf, fmt.Sprintf("%s.yaml", lang))
+	return err
+}
+
+func parseLangFromContent(buf []byte) (string, error) {
+	var data map[string]interface{}
+	if err := yaml.Unmarshal(buf, &data); err != nil {
+		return "", err
+	}
+	for lang := range data {
+		return lang, nil
+	}
+	return "", errors.New("no language key found")
+}
+
 // loadPathFiles 加载指定路径下的所有消息文件
-func loadPathFiles(path string) error {
+func loadPathFiles(path string, unmarshalType string) error {
 	return filepath.Walk(path, func(filePath string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -113,23 +155,46 @@ func loadPathFiles(path string) error {
 		if info.IsDir() {
 			return nil
 		}
-		bundle.MustLoadMessageFile(filePath)
+		if err := loadMessageFile(filePath, unmarshalType); err != nil {
+			panic(err)
+		}
+
 		return nil
 	})
 }
 
+func loadMessageFile(filePath, unmarshalType string) error {
+	if _, err := bundle.LoadMessageFile(filePath); err != nil {
+		if strings.ToUpper(unmarshalType) == "YAML" {
+			return loadI18nFromYAML(bundle, filePath)
+		}
+		return err
+	}
+	return nil
+}
+
 // AddPath 运行时添加单个路径
-func AddPath(path string) error {
-	if !pathExist(path) {
+func AddPath(path string, unmarshalType string) error {
+	info, err := os.Stat(path)
+	if err != nil {
 		return fmt.Errorf("path not exist: %s", path)
 	}
-	return loadPathFiles(path)
+
+	if info.IsDir() {
+		// 如果是目录，遍历加载目录下的所有文件
+		return loadPathFiles(path, unmarshalType)
+	} else if info.Mode().IsRegular() {
+		// 如果是文件，直接加载
+		return loadMessageFile(path, unmarshalType)
+	}
+
+	return fmt.Errorf("path is not a file or directory: %s", path)
 }
 
 // AddPaths 运行时批量添加路径
-func AddPaths(paths []string) error {
+func AddPaths(paths []string, unmarshalType string) error {
 	for _, path := range paths {
-		if err := AddPath(path); err != nil {
+		if err := AddPath(path, unmarshalType); err != nil {
 			return err
 		}
 	}
@@ -162,15 +227,6 @@ func (m *Localize) Localize(lang, key string) (string, error) {
 	return m.getLocalizer(lang).Localize(&i18n.LocalizeConfig{
 		MessageID: fmt.Sprintf("%s.%s", lang, key),
 	})
-}
-
-func pathExist(path string) bool {
-	_, err := os.Stat(path)
-	if err == nil {
-		// 路径存在
-		return true
-	}
-	return false
 }
 
 type Message struct {

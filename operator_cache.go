@@ -15,10 +15,9 @@ type FieldInfo struct {
 
 // OperatorTypeInfo 操作符类型缓存信息
 type OperatorTypeInfo struct {
-	ElemType     reflect.Type // 元素类型 (去除指针)
-	Fields       []FieldInfo  // 字段信息
-	Pool         *sync.Pool   // 对象池
-	HasValidator bool         // 是否有验证器
+	ElemType reflect.Type // 元素类型 (去除指针)
+	Fields   []FieldInfo  // 字段信息
+	Pool     *sync.Pool   // 对象池
 }
 
 // NewInstance 从对象池获取或创建新实例
@@ -100,11 +99,6 @@ func parseOperatorType(operatorType reflect.Type) *OperatorTypeInfo {
 		Fields:   make([]FieldInfo, 0),
 	}
 
-	// 实现 Validator 接口
-	if _, ok := operatorType.(Validator); ok {
-		info.HasValidator = true
-	}
-	
 	// 创建对象池，用于复用操作符实例，减少GC压力
 	// 每个操作符类型维护自己的对象池
 	info.Pool = &sync.Pool{

@@ -62,6 +62,7 @@ type Request interface {
 type HandleOperator interface {
 	Operator
 	Request
+	Validator
 }
 
 type TypeOperator interface {

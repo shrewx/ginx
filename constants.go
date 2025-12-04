@@ -12,9 +12,10 @@ const (
 )
 
 const (
-	OperationName   = "x-operation-name"
-	ParsedParamsKey = "x-parsed-params"
-	InjectParamsKey = "x-inject-params"
+	OperationName    = "x-operation-name"
+	ParsedParamsKey  = "x-parsed-params"
+	ResponseErrorKey = "x-response-error"
+	InjectParamsKey  = "x-inject-params"
 )
 
 // https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types
