@@ -13,10 +13,11 @@ import (
 )
 
 const (
-	Unknown       = "unknown"
-	OperationName = "x-operation-name"
-	TracerKey     = "x-tracer-key"
-	TracerName    = "github.com/shrewx/ginx/tracer"
+	Unknown           = "unknown"
+	OperationName     = "x-operation-name"
+	TracerKey         = "x-tracer-key"
+	RequestContextKey = "x-request-ctx-key"
+	TracerName        = "github.com/shrewx/ginx/tracer"
 )
 
 func Telemetry(agent *ptrace.Agent) gin.HandlerFunc {
@@ -54,10 +55,12 @@ func Telemetry(agent *ptrace.Agent) gin.HandlerFunc {
 			otrace.WithSpanKind(otrace.SpanKindServer),
 		}
 
-		ctx, span := tracer.Start(ctx, "", opts...)
+		ctx, span := tracer.Start(ctx, c.Request.URL.Path, opts...)
 		defer span.End()
 
 		c.Request = c.Request.WithContext(ctx)
+
+		c.Set(RequestContextKey, c.Request)
 
 		c.Next()
 

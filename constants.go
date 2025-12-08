@@ -16,6 +16,8 @@ const (
 	ParsedParamsKey  = "x-parsed-params"
 	ResponseErrorKey = "x-response-error"
 	InjectParamsKey  = "x-inject-params"
+
+	RequestContextKey = "x-request-ctx-key"
 )
 
 // https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types

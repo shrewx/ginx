@@ -99,9 +99,11 @@ config.Apply(opts...)
 
 func (g *ServiceClientGenerator) WriteClientInterface(ctx context.Context, openapi *oas.OpenAPI) {
 	varContext := codegen.Var(codegen.Type(g.File.Use("context", "Context")))
+	varTimeout := codegen.Var(codegen.Type(g.File.Use("time", "Duration")))
 
 	snippets := []codegen.SnippetCanBeInterfaceMethod{
 		codegen.Func(varContext).Named("WithContext").Return(codegen.Var(codegen.Type(g.ClientInterfaceName()))),
+		codegen.Func(varContext, varTimeout).Named("WithTimeout").Return(codegen.Var(codegen.Type(g.ClientInterfaceName()))),
 		codegen.Func().Named("Context").Return(varContext),
 	}
 

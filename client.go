@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -20,7 +22,6 @@ import (
 	"github.com/go-courier/reflectx"
 	"github.com/shrewx/ginx/pkg/statuserror"
 	"github.com/spf13/cast"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"golang.org/x/net/http2"
 )
 
@@ -76,6 +77,10 @@ func (f *Client) Invoke(ctx context.Context, req interface{}) (ResponseBind, err
 		httpClient = GetShortConnClientContext(ctx, timeout)
 	}
 
+	if ctxReq, ok := ctx.Value(RequestContextKey).(*http.Request); ok {
+		otel.GetTextMapPropagator().Inject(ctxReq.Context(), propagation.HeaderCarrier(request.Header))
+	}
+
 	resp, err := httpClient.Do(request)
 	if err != nil {
 		return nil, err
@@ -104,8 +109,6 @@ func (f *Client) newRequest(ctx context.Context, req interface{}) (*http.Request
 	if err != nil {
 		return nil, err
 	}
-
-	request = request.WithContext(ctx)
 
 	return request, nil
 }
@@ -363,11 +366,14 @@ func GetShortConnClientContext(ctx context.Context, clientTimeout time.Duration)
 	timeout := DefaultClientTimeout(ctx)
 	if timeout != nil {
 		clientTimeout = *timeout
+	} else {
+		clientTimeout = DefaultTimeout
 	}
 
 	client := &http.Client{
-		Timeout:   clientTimeout,
-		Transport: otelhttp.NewTransport(t),
+		Timeout: clientTimeout,
+		// Transport: otelhttp.NewTransport(t),
+		Transport: t,
 	}
 
 	return client
