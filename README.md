@@ -137,6 +137,29 @@ group := ir.Group("v0",gin.BasicAuth(map[string]string{
     "admin": "admin",
 }))
 ```
+
+如果希望实现before和after，则实现`MiddlewareOperator`接口，里面包括四个方法：
+* Output(ctx *gin.Context) (interface{}, error)
+* Type() string
+* Before(ctx *gin.Context) error 
+* After(ctx *gin.Context) error
+举个例子：
+```go
+type LoggingMiddleware struct {
+	ginx.EmptyMiddlewareOperator
+}
+
+func (g *LoggingMiddleware) Before(ctx *gin.Context) error {
+	logfile.Info("request: ", ctx.Request.URL.Path)
+	return nil
+}
+
+func (g *LoggingMiddleware) After(ctx *gin.Context) error {
+	logfile.Info("response: ", ctx.Writer.Status())
+	return nil
+}
+```
+
 ### 请求参数
 
 请求参数类型通过tag进行区分，使用关键字`in`声明参数类型，`name`声明参数名称,框架会自动解析请求的参数，并填充到结构体对应的成员变量中方便实用
@@ -183,8 +206,11 @@ func (g *BaseAuth) Output(ctx *gin.Context) (interface{}, error) {
 ````go
 type PutUserInfo struct {
 	ginx.MethodPost
+	// 名称
 	Name    string `in:"form" name:"name"`
+	// 年龄
 	Age     int    `in:"form" name:"age"`
+	// 地址
 	Address string `in:"form" name:"address"`
 }
 ````
@@ -220,8 +246,11 @@ body类型里面tag直接使用`json`就可
 type CreateUserInfo struct {
 	ginx.MethodPost
 	Body struct {
+		// 名称
 		Name    string `json:"name"`
+		// 年龄
 		Age     int    `json:"age"`
+		// 地址
 		Address string `json:"address"`
 	} `in:"body"`
 }

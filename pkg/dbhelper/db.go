@@ -2,7 +2,6 @@ package dbhelper
 
 import (
 	"context"
-	"database/sql"
 	"github.com/glebarez/sqlite"
 	"github.com/shrewx/ginx/pkg/conf"
 	"time"
@@ -125,7 +124,7 @@ func Migrate(db *DB) error {
 	return db.AutoMigrate(maps.Values(tables)...)
 }
 
-func SetCtxDB(ctx context.Context, db *sql.DB) context.Context {
+func SetCtxDB(ctx context.Context, db *gorm.DB) context.Context {
 	return context.WithValue(ctx, DBKey, db)
 }
 
