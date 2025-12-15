@@ -1,6 +1,7 @@
 package ginx
 
 import (
+	"net/http"
 	"net/textproto"
 	"reflect"
 	"strings"
@@ -148,6 +149,12 @@ func bindHeaderParam(ctx *gin.Context, fieldValue reflect.Value, field FieldInfo
 
 // bindFormParam 绑定表单参数
 func bindFormParam(ctx *gin.Context, fieldValue reflect.Value, field FieldInfo) error {
+	if ctx.Request.Method == http.MethodDelete {
+		ctx.Request.Method = http.MethodPost
+		defer func() {
+			ctx.Request.Method = http.MethodDelete
+		}()
+	}
 	// 确保 ParseForm 已调用
 	if err := ctx.Request.ParseForm(); err != nil {
 		return err
@@ -179,6 +186,12 @@ func bindMultipartParam(ctx *gin.Context, fieldValue reflect.Value, field FieldI
 
 // bindURLEncodedParam 绑定URL编码参数
 func bindURLEncodedParam(ctx *gin.Context, fieldValue reflect.Value, field FieldInfo) error {
+	if ctx.Request.Method == http.MethodDelete {
+		ctx.Request.Method = http.MethodPost
+		defer func() {
+			ctx.Request.Method = http.MethodDelete
+		}()
+	}
 	// 确保 ParseForm 已调用
 	if err := ctx.Request.ParseForm(); err != nil {
 		return err
@@ -403,4 +416,8 @@ func GetParsedParams(ctx *gin.Context) map[string]interface{} {
 		return value.(map[string]interface{})
 	}
 	return nil
+}
+
+func ResetParsedParams(ctx *gin.Context, params map[string]interface{}) {
+	ctx.Set(ParsedParamsKey, params)
 }
