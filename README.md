@@ -23,6 +23,7 @@
 
 * Path() string // 说明该路由的路径
 * Method() string // 说明该路由的HTTP Method
+* Validate(ctx *gin.Context) error // 校验参数，返回校验错误
 * Output(ctx *gin.Context) (interface{}, error)  // 接口的具体功能逻辑
 
 例如：
@@ -38,6 +39,10 @@ type GetHelloWorldResponse struct {
 
 func (g *GetHelloWorld) Path() string {
     return "/hello"
+}
+
+func (g *GetHelloWorld) Validate(ctx *gin.Context) error {
+    return nil
 }
 
 func (g *GetHelloWorld) Output(ctx *gin.Context) (interface{}, error) {
