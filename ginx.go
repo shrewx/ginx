@@ -38,6 +38,8 @@ var (
 	showParams bool
 
 	langHeaderValue atomic.Value
+
+	traceAgent *trace.Agent
 )
 
 func init() {
@@ -129,10 +131,10 @@ func RunServer(config *conf.Server, r *GinRouter) {
 	i18nx.Load(config.I18N)
 
 	// trace agent
-	agent := initTrace(config)
+	traceAgent = initTrace(config)
 
 	// init engine
-	instance().engine = initGinEngine(r, agent)
+	instance().engine = initGinEngine(r)
 
 	// listen server
 	instance().spin(config)
@@ -287,4 +289,8 @@ func CurrentLangHeader() string {
 		return value
 	}
 	return LangHeader
+}
+
+func GetTraceAgent() *trace.Agent {
+	return traceAgent
 }

@@ -12,7 +12,6 @@ import (
 	e2 "github.com/shrewx/ginx/internal/errors"
 	"github.com/shrewx/ginx/internal/middleware"
 	"github.com/shrewx/ginx/pkg/logx"
-	"github.com/shrewx/ginx/pkg/trace"
 )
 
 type GinGroup struct {
@@ -93,7 +92,7 @@ func (g *GinRouter) Register(r Operator) {
 	}
 }
 
-func initGinEngine(r *GinRouter, agent *trace.Agent) *gin.Engine {
+func initGinEngine(r *GinRouter) *gin.Engine {
 	// 设置为 Release 模式禁用 Gin 的调试日志
 	gin.SetMode(gin.ReleaseMode)
 
@@ -107,7 +106,7 @@ func initGinEngine(r *GinRouter, agent *trace.Agent) *gin.Engine {
 	// internal middleware
 	root.Use(middleware.Recovery())
 	root.Use(middleware.CORS())
-	root.Use(middleware.Telemetry(agent))
+	root.Use(middleware.Telemetry(traceAgent))
 
 	// 收集所有操作符用于预热缓存
 	var allOperators []interface{}

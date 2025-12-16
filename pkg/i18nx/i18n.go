@@ -3,10 +3,12 @@ package i18nx
 import (
 	"encoding/json"
 	"fmt"
+	t2 "github.com/nicksnyder/go-i18n/v2/i18n/template"
 	"github.com/pkg/errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 
 	"github.com/BurntSushi/toml"
 	"github.com/nicksnyder/go-i18n/v2/i18n"
@@ -216,17 +218,35 @@ func (m *Localize) getLocalizer(lang string) *i18n.Localizer {
 	return i18n.NewLocalizer(bundle, lang)
 }
 
-func (m *Localize) LocalizeData(lang, key string, data map[string]interface{}) (string, error) {
-	return m.getLocalizer(lang).Localize(&i18n.LocalizeConfig{
+func (m *Localize) LocalizeData(lang, key string, data map[string]interface{}, opts ...LocalizeOption) (string, error) {
+	c := &i18n.LocalizeConfig{
 		MessageID:    fmt.Sprintf("%s.%s", lang, key),
 		TemplateData: data,
-	})
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return m.getLocalizer(lang).Localize(c)
 }
 
 func (m *Localize) Localize(lang, key string) (string, error) {
 	return m.getLocalizer(lang).Localize(&i18n.LocalizeConfig{
 		MessageID: fmt.Sprintf("%s.%s", lang, key),
 	})
+}
+
+type LocalizeOption func(*i18n.LocalizeConfig)
+
+func WithTemplateParser(templateParser t2.Parser) LocalizeOption {
+	return func(c *i18n.LocalizeConfig) {
+		c.TemplateParser = templateParser
+	}
+}
+
+func WithTemplateFuncs(funcMap template.FuncMap) LocalizeOption {
+	return func(c *i18n.LocalizeConfig) {
+		c.Funcs = funcMap
+	}
 }
 
 type Message struct {

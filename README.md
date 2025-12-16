@@ -301,6 +301,17 @@ func (g *OtherType) Output(ctx *gin.Context) (interface{}, error) {
 	return nil, nil
 }
 ```
+
+### 参数的校验
+可以实现`Validate(ctx *gin.Context) error`方法，对请求参数进行校验。如果校验失败，需要返回一个错误。
+```go
+func (g *GetUserInfo) Validate(ctx *gin.Context) error {
+	if g.Username == "" {
+		return errors.BadRequest
+	}
+	return nil
+}
+```
 ## 错误处理
 ### 接口错误文件定义
 目前错误定义设计的结构如下：
