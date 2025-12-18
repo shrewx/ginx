@@ -10,8 +10,10 @@ import (
 	"github.com/go-courier/packagesx"
 	"github.com/shrewx/ginx/pkg/openapi"
 	"github.com/spf13/cobra"
+	"golang.org/x/tools/go/packages"
 	"log"
 	"os"
+	"strings"
 )
 
 const SwaggerImage = "swaggerapi/swagger-ui"
@@ -20,6 +22,7 @@ var (
 	path        string
 	swaggerPort int32
 	serverUrl   string
+	tags        string
 )
 
 func Swagger() *cobra.Command {
@@ -30,10 +33,32 @@ func Swagger() *cobra.Command {
 			if path == "" {
 				path, _ = os.Getwd()
 			}
+			var (
+				pkg *packagesx.Package
+				err error
+			)
 
-			pkg, err := packagesx.Load(path)
-			if err != nil {
-				panic(err)
+			// 如果指定了构建标签，使用 packages.Load 并设置 BuildFlags
+			if tags != "" {
+				// 支持逗号或空格分隔的构建标签
+				tagValue := strings.ReplaceAll(tags, ",", " ")
+				tagValue = strings.TrimSpace(tagValue)
+				config := &packages.Config{
+					Mode:       packages.LoadAllSyntax | packages.NeedImports,
+					BuildFlags: []string{"-tags", tagValue},
+				}
+				pkgs, err := packages.Load(config, path)
+				if err != nil {
+					panic(err)
+				}
+
+				pkg = packagesx.NewPackage(pkgs[0])
+			} else {
+				// 默认行为，使用 packagesx.Load
+				pkg, err = packagesx.Load(path)
+				if err != nil {
+					panic(err)
+				}
 			}
 			g := openapi.NewOpenAPIGenerator(pkg)
 			g.Scan(context.Background())
@@ -89,6 +114,6 @@ func Swagger() *cobra.Command {
 
 	swagger.Flags().Int32VarP(&swaggerPort, "swagger-port", "p", 9200, "define swagger server export port")
 	swagger.Flags().StringVarP(&serverUrl, "server-host", "s", "http://127.0.0.1:8888", "define local api server port")
-
+	swagger.Flags().StringVarP(&tags, "tags", "t", "", "define build tags")
 	return swagger
 }

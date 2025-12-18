@@ -565,6 +565,11 @@ func (scanner *OperatorScanner) scanParameterOrRequestBody(ctx context.Context, 
 			return true
 		}
 
+		validateValue, vflags := tagValueAndFlagsByTagString(field.Tag().Get("validate"))
+		if validateValue != "required" && vflags["required"] != true {
+			omitempty = true
+		}
+
 		name, flags := tagValueAndFlagsByTagString(field.Tag().Get("name"))
 		if name == "" {
 			name, flags = tagValueAndFlagsByTagString(field.Tag().Get("json"))
