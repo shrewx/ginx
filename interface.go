@@ -10,7 +10,7 @@ type Operator interface {
 }
 
 type Validator interface {
-	Validate(ctx *gin.Context) error
+	Validate(ctx *gin.Context) (interface{}, error)
 }
 
 type PathDescriber interface {
