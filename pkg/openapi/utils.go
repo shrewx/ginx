@@ -1,11 +1,12 @@
 package openapi
 
 import (
-	"github.com/go-courier/packagesx"
-	"github.com/shrewx/ginx"
 	"go/types"
 	"reflect"
 	"strings"
+
+	"github.com/go-courier/packagesx"
+	"github.com/shrewx/ginx"
 )
 
 const (
@@ -19,6 +20,7 @@ const (
 	XTagJSON     = `x-tag-json`
 	XTagXML      = `x-tag-xml`
 	XTagName     = `x-tag-name`
+	XTagIn       = `x-tag-in`
 
 	XEnumLabels = `x-enum-labels`
 	XStatusErrs = `x-status-errors`

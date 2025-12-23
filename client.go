@@ -5,10 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/propagation"
 	"io"
-	"mime"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -18,6 +15,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/go-courier/reflectx"
 	"github.com/shrewx/ginx/pkg/statuserror"
@@ -182,9 +182,7 @@ func (f *Client) newRequestWithContext(ctx context.Context, method string, rawUr
 				header.Set("Content-Type", MineApplicationJson)
 			case UrlEncode: // URL编码表单数据
 				query.Add(name, rv.Field(i).String())
-				header.Set("Content-Type", mime.FormatMediaType(MineApplicationUrlencoded, map[string]string{
-					"param": "value",
-				}))
+				header.Set("Content-Type", MineApplicationUrlencoded)
 			case Form, Multipart: // 表单或multipart数据
 				switch typ := rv.Field(i).Interface().(type) {
 				case MultipartFile: // 单个文件上传

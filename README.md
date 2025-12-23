@@ -13,7 +13,22 @@
 
 ## 快速上手
 
-//TODO
+1. 先安装toolx工具
+
+```shell
+go install github.com/shrewx/ginx/pkg/toolx@latest
+```
+2. 初始化项目:
+
+```shell
+toolx init myproject
+```
+
+3. 按照最终的输出提示，启动项目
+
+```shell
+cd myproject/cmd/myproject && go build && ./myproject -f local-config.yaml
+```
 
 ## 接口定义
 
@@ -23,7 +38,7 @@
 
 * Path() string // 说明该路由的路径
 * Method() string // 说明该路由的HTTP Method
-* Validate(ctx *gin.Context) (interface{}, error) // 校验参数，返回需要在output使用的对象和校验错误
+* Validate(ctx *gin.Context)  error // 校验参数，返回校验错误
 * Output(ctx *gin.Context) (interface{}, error)  // 接口的具体功能逻辑
 
 例如：
@@ -559,9 +574,9 @@ func (g *$Struct$) Path() string {
 	return ""
 }
 
-func (g *$Struct$) Validate(ctx *gin.Context) (interface{}, error) {
-$END$
-return nil, nil
+func (g *$Struct$) Validate(ctx *gin.Context) error {
+	$END$
+	return nil
 }
 
 func (g *$Struct$) Output(ctx *gin.Context) (interface{}, error) {

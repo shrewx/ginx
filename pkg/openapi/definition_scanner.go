@@ -420,6 +420,37 @@ func (scanner *DefinitionScanner) propSchemaByField(
 	}
 
 	setMetaFromDoc(propSchema, desc)
+
+	// 保存字段名和所有 tag 信息到扩展中，以便客户端生成时能还原原始结构体
+	addExtension(propSchema, XGoFieldName, fieldName)
+
+	// 保存所有相关的 tag
+	if inTag := tags.Get("in"); inTag != "" {
+		addExtension(propSchema, XTagIn, inTag)
+	}
+	// 只有当 JSON tag 包含额外信息（flags）或值与 properties key 不同时才保存
+	// 如果 JSON tag 的值和 properties key 相同且没有 flags，则省略，直接使用 properties key
+	if jsonTag := tags.Get("json"); jsonTag != "" {
+		jsonTagValue, jsonFlags := tagValueAndFlagsByTagString(jsonTag)
+		// 如果 JSON tag 包含 flags（如 omitempty）或值与 name 不同，则保存完整的 tag
+		if len(jsonFlags) > 0 || jsonTagValue != name {
+			addExtension(propSchema, XTagJSON, jsonTag)
+		}
+		// 否则不保存，客户端生成时会直接使用 properties key
+	}
+	if nameTag := tags.Get("name"); nameTag != "" {
+		addExtension(propSchema, XTagName, nameTag)
+	}
+	if validateTag := tags.Get("validate"); validateTag != "" {
+		addExtension(propSchema, XTagValidate, validateTag)
+	}
+	if xmlTag := tags.Get("xml"); xmlTag != "" {
+		addExtension(propSchema, XTagXML, xmlTag)
+	}
+	if mimeTag := tags.Get("mime"); mimeTag != "" {
+		addExtension(propSchema, XTagMime, mimeTag)
+	}
+
 	if refSchema != nil {
 		return oas.AllOf(
 			refSchema,

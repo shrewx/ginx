@@ -50,20 +50,21 @@ func (g *TypeGenerator) Scan(ctx context.Context, openapi *oas.OpenAPI) {
 			continue
 		}
 
-		if len(s.Properties) == 0 && s.Type == oas.TypeObject {
-			pkgImportPath, expose := getPkgImportPathAndExpose(s)
-			if pkgImportPath != "" {
-				if _, ok := typ.(*codegen.StructType); ok {
-					typeName := codegen.LowerSnakeCase(pkgImportPath) + "." + expose
-					g.File.Use(pkgImportPath, strings.TrimSuffix(id, expose))
-					g.File.WriteBlock(
-						codegen.DeclType(
-							codegen.Var(codegen.Type(typeName), id).AsAlias(),
-						))
-					continue
-				}
-			}
-		}
+		// 注释掉对空对象使用外部包类型的逻辑，让所有结构体都根据 OpenAPI schema 重新生成
+		// if len(s.Properties) == 0 && s.Type == oas.TypeObject {
+		// 	pkgImportPath, expose := getPkgImportPathAndExpose(s)
+		// 	if pkgImportPath != "" {
+		// 		if _, ok := typ.(*codegen.StructType); ok {
+		// 			typeName := codegen.LowerSnakeCase(pkgImportPath) + "." + expose
+		// 			g.File.Use(pkgImportPath, strings.TrimSuffix(id, expose))
+		// 			g.File.WriteBlock(
+		// 				codegen.DeclType(
+		// 					codegen.Var(codegen.Type(typeName), id).AsAlias(),
+		// 				))
+		// 			continue
+		// 		}
+		// 	}
+		// }
 
 		g.File.WriteBlock(
 			codegen.DeclType(
@@ -131,21 +132,23 @@ func (g *TypeGenerator) TypeIndirect(ctx context.Context, schema *oas.Schema) (c
 		return codegen.Type(schema.Refer.(*oas.ComponentRefer).ID), true
 	}
 
-	if schema.Extensions[openapi.XGoVendorType] != nil {
-		pkgImportPath, expose := packagesx.GetPkgImportPathAndExpose(schema.Extensions[openapi.XGoVendorType].(string))
-
-		vendorImports := VendorImportsFromContext(ctx)
-
-		if len(vendorImports) > 0 {
-			for _, p := range paths(pkgImportPath) {
-				if _, ok := vendorImports[p]; ok {
-					return codegen.Type(g.File.Use(pkgImportPath, expose)), true
-				}
-			}
-		} else {
-			return codegen.Type(g.File.Use(pkgImportPath, expose)), true
-		}
-	}
+	// 注释掉 XGoVendorType 的处理，让所有结构体都根据 OpenAPI schema 重新生成
+	// 这样生成的客户端代码不依赖外部包，使用者不需要 go get 原始仓库
+	// if schema.Extensions[openapi.XGoVendorType] != nil {
+	// 	pkgImportPath, expose := packagesx.GetPkgImportPathAndExpose(schema.Extensions[openapi.XGoVendorType].(string))
+	//
+	// 	vendorImports := VendorImportsFromContext(ctx)
+	//
+	// 	if len(vendorImports) > 0 {
+	// 		for _, p := range paths(pkgImportPath) {
+	// 			if _, ok := vendorImports[p]; ok {
+	// 				return codegen.Type(g.File.Use(pkgImportPath, expose)), true
+	// 			}
+	// 		}
+	// 	} else {
+	// 		return codegen.Type(g.File.Use(pkgImportPath, expose)), true
+	// 	}
+	// }
 
 	if schema.Enum != nil {
 		name := codegen.UpperCamelCase(g.ServiceName)
@@ -281,8 +284,6 @@ func (g *TypeGenerator) FieldsFrom(ctx context.Context, schema *oas.Schema) (fie
 }
 
 func (g *TypeGenerator) FieldOf(ctx context.Context, name string, propSchema *oas.Schema, requiredFields map[string]bool) *codegen.SnippetField {
-	isRequired := requiredFields[name]
-
 	if len(propSchema.AllOf) == 2 && propSchema.AllOf[1].Type != oas.TypeObject {
 		propSchema = &oas.Schema{
 			Reference:      propSchema.AllOf[0].Reference,
@@ -307,15 +308,32 @@ func (g *TypeGenerator) FieldOf(ctx context.Context, name string, propSchema *oa
 	}
 
 	appendNamedTag := func(key string, value string) {
+		// 直接使用原始 tag 值，不自动添加 omitempty
+		// 如果原始 tag 中已经包含 omitempty，则保留；如果没有，则不添加
 		appendTag(key, value)
-		if !isRequired && !strings.Contains(value, "omitempty") {
-			appendTag(key, "omitempty")
-		}
 	}
 
-	if propSchema.Extensions[openapi.XTagJSON] != nil {
-		appendNamedTag("json", propSchema.Extensions[openapi.XTagJSON].(string))
+	var inTagValue string
+	if propSchema.Extensions[openapi.XTagIn] != nil {
+		inTagValue = propSchema.Extensions[openapi.XTagIn].(string)
+		appendTag("in", inTagValue)
 	}
+
+	// 根据 in tag 的值决定是否添加 JSON tag：
+	// - 如果 in 是 "body"，JSON tag 固定为 "body"
+	// - 如果 in 不是 "body"（如 query、path、header 等），不添加 JSON tag
+	if inTagValue == "body" {
+		appendNamedTag("json", "body")
+	} else if inTagValue == "" {
+		// 如果没有 in tag，按照原来的逻辑处理（可能是响应体字段）
+		if propSchema.Extensions[openapi.XTagJSON] != nil {
+			appendNamedTag("json", propSchema.Extensions[openapi.XTagJSON].(string))
+		} else {
+			// 如果没有 x-tag-json，直接使用 properties key（name 参数）作为 JSON tag 值
+			appendNamedTag("json", name)
+		}
+	}
+	// 如果 in tag 存在且不是 "body"，不添加 JSON tag
 
 	if propSchema.Extensions[openapi.XTagName] != nil {
 		appendNamedTag("name", propSchema.Extensions[openapi.XTagName].(string))

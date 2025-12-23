@@ -6,6 +6,7 @@ import (
 	"github.com/shrewx/ginx"
 	"net/http"
 	"regexp"
+	"strings"
 
 	"github.com/go-courier/codegen"
 	"github.com/go-courier/oas"
@@ -24,6 +25,41 @@ type OperationGenerator struct {
 }
 
 var reBraceToColon = regexp.MustCompile(`/\{([^/]+)\}`)
+
+// hasTagKey 检查 tag 字符串中是否已经包含指定的 key
+func hasTagKey(tagStr string, key string) bool {
+	if tagStr == "" {
+		return false
+	}
+	// 简单的检查：查找 key:" 或 key:"
+	pattern := regexp.MustCompile(fmt.Sprintf(`\b%s:`, regexp.QuoteMeta(key)))
+	return pattern.MatchString(tagStr)
+}
+
+// addTagIfNotExists 如果 tag 中不存在指定的 key，则添加它
+func addTagIfNotExists(existingTag string, key string, value string) string {
+	if hasTagKey(existingTag, key) {
+		return existingTag
+	}
+	newTag := fmt.Sprintf(`%s:"%s"`, key, value)
+	if existingTag != "" {
+		return newTag + " " + existingTag
+	}
+	return newTag
+}
+
+// removeTagKey 从 tag 字符串中移除指定的 key
+func removeTagKey(tagStr string, key string) string {
+	if tagStr == "" {
+		return tagStr
+	}
+	// 匹配 key:"value" 或 key:"value" 后面跟空格或其他 tag
+	pattern := regexp.MustCompile(fmt.Sprintf(`\b%s:"[^"]*"\s*`, regexp.QuoteMeta(key)))
+	result := pattern.ReplaceAllString(tagStr, "")
+	// 清理多余的空格
+	result = regexp.MustCompile(`\s+`).ReplaceAllString(result, " ")
+	return strings.TrimSpace(result)
+}
 
 func toColonPath(path string) string {
 	return reBraceToColon.ReplaceAllStringFunc(path, func(str string) string {
@@ -167,10 +203,11 @@ func (g *OperationGenerator) ParamField(ctx context.Context, parameter *oas.Para
 		parameter.Name: parameter.Required,
 	})
 
-	tag := fmt.Sprintf(`in:"%s" name:"%s"`, parameter.In, parameter.Name)
-	if field.Tag != "" {
-		tag = tag + " " + field.Tag
-	}
+	// 移除 JSON tag（非 body 字段不需要 JSON tag）
+	tag := removeTagKey(field.Tag, "json")
+	// 只在 field.Tag 中不存在时才添加 in 和 name tag，避免重复
+	tag = addTagIfNotExists(tag, "in", string(parameter.In))
+	tag = addTagIfNotExists(tag, "name", parameter.Name)
 	field.Tag = tag
 
 	return field
@@ -188,12 +225,14 @@ func (g *OperationGenerator) RequestBodyField(ctx context.Context, requestBody *
 		return nil
 	}
 
-	field := NewTypeGenerator(g.ServiceName, g.File).FieldOf(ctx, "Data", mediaType.Schema, map[string]bool{})
+	field := NewTypeGenerator(g.ServiceName, g.File).FieldOf(ctx, "Body", mediaType.Schema, map[string]bool{})
 
-	tag := `in:"body"`
-	if field.Tag != "" {
-		tag = tag + " " + field.Tag
-	}
+	// 强制设置 in 和 json tag，确保 in:"body" json:"body"
+	tag := field.Tag
+	// 移除可能存在的 json tag，然后重新添加
+	tag = removeTagKey(tag, "json")
+	tag = addTagIfNotExists(tag, "in", "body")
+	tag = addTagIfNotExists(tag, "json", "body")
 	field.Tag = tag
 
 	return field
@@ -219,10 +258,11 @@ func (g *OperationGenerator) FormField(ctx context.Context, requestBody *oas.Req
 
 	for name, schema := range requestBody.Content[contentType].Schema.Properties {
 		field := NewTypeGenerator(g.ServiceName, g.File).FieldOf(ctx, name, schema, map[string]bool{})
-		tag := fmt.Sprintf(`in:"%s" name:"%s"`, in, name)
-		if field.Tag != "" {
-			tag = tag + " " + field.Tag
-		}
+		// 移除 JSON tag（非 body 字段不需要 JSON tag）
+		tag := removeTagKey(field.Tag, "json")
+		// 只在 field.Tag 中不存在时才添加 in 和 name tag，避免重复
+		tag = addTagIfNotExists(tag, "in", in)
+		tag = addTagIfNotExists(tag, "name", name)
 		field.Tag = tag
 		fields = append(fields, field)
 	}
