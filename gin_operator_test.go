@@ -10,7 +10,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/internal/errors"
 	"github.com/shrewx/ginx/pkg/statuserror"
-	"github.com/shrewx/ginx/pkg/trace"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -229,8 +228,8 @@ func TestInitGinEngine(t *testing.T) {
 	)
 
 	// 初始化引擎
-	agent := &trace.Agent{} // 简化的agent
-	engine := initGinEngine(router, agent)
+
+	engine := initGinEngine(router)
 
 	assert.NotNil(t, engine)
 
@@ -273,7 +272,7 @@ func TestGinHandleFuncWrapper(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		operator     Operator
+		operator     HandleOperator
 		setupRequest func() (*gin.Context, *httptest.ResponseRecorder)
 		validate     func(*testing.T, *httptest.ResponseRecorder)
 	}{

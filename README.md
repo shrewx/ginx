@@ -1,8 +1,8 @@
 # 使用文档
 
 ## 介绍
-接口结构参考[httptransport](https://github.com/go-courier/httptransport)设计思想，对gin做了封装，并使用[httptransport](https://github.com/go-courier/httptransport)的openapi和client自动生成工具适配。
-封装目的主要有几点：
+使用gin框架，进一步做了封装。
+主要有几点：
 1. 规范接口定义，解析传入参数的统一处理
 2. 使用注释+代码自动生成
    1. 错误码及i18n文件
