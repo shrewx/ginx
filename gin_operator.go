@@ -222,13 +222,12 @@ func ginHandleFuncWrapper(op HandleOperator) gin.HandlerFunc {
 		showParameterBinding(typeInfo.ElemType.Name(), operator)
 
 		// 执行验证器
-		entity, err := operator.Validate(ctx)
+		err := operator.Validate(ctx)
 		if err != nil {
 			executeErrorHandlers(err, ctx)
 			ctx.Abort()
 			return
 		}
-		ctx.Set(ValidateEntity, entity)
 
 		// 执行业务逻辑
 		result, err := operator.Output(ctx)
@@ -343,11 +342,6 @@ func GetTypedValue[T any](ctx *gin.Context, key string) (T, bool) {
 	}
 
 	return typed, true
-}
-
-// GetValidatedEntity 从上下文中获取Validate返回的类型安全值
-func GetValidatedEntity[T any](ctx *gin.Context) (T, bool) {
-	return GetTypedValue[T](ctx, ValidateEntity)
 }
 
 func GetLang(ctx *gin.Context) string {

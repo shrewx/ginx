@@ -24,7 +24,7 @@ func NewGormTransactionManager(db *gorm.DB) TransactionManager {
 
 // Transaction 在事务中执行函数
 func (m *GormTransactionManager) Transaction(ctx context.Context, fn func(ctx context.Context) error) error {
-	return m.db.Transaction(func(tx *gorm.DB) error {
+	return GetCtxDB(ctx, m.db).Transaction(func(tx *gorm.DB) error {
 		// 将事务数据库连接设置到上下文中
 		ctx = SetCtxDB(ctx, tx)
 		// 执行用户提供的函数

@@ -18,8 +18,6 @@ const (
 	InjectParamsKey  = "x-inject-params"
 
 	RequestContextKey = "x-request-ctx-key"
-
-	ValidateEntity = "x-validate-entity"
 )
 const (
 	Success = "success"

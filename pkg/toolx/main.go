@@ -16,6 +16,7 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(gen.CmdGen)
 	rootCmd.AddCommand(cmd.Swagger())
+	rootCmd.AddCommand(cmd.Init())
 }
 
 func main() {

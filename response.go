@@ -131,7 +131,11 @@ func executeResponseHandlers(ctx *gin.Context, result interface{}) {
 	ctx.Data(resp.Status(), resp.ContentType(), resp.Body())
 }
 
-type CommonSuccessResponse struct {
+type CommonResponse struct {
 	// 结果
 	Result string `json:"result"`
+}
+
+func CommonSuccessResponse() *CommonResponse {
+	return &CommonResponse{Result: Success}
 }
