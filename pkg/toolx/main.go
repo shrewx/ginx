@@ -17,6 +17,7 @@ func init() {
 	rootCmd.AddCommand(gen.CmdGen)
 	rootCmd.AddCommand(cmd.Swagger())
 	rootCmd.AddCommand(cmd.Init())
+	rootCmd.AddCommand(cmd.InstallSkill())
 }
 
 func main() {

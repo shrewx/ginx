@@ -1,9 +1,11 @@
 package ginx
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +23,7 @@ type TestRequestBody struct {
 	Content string `json:"content"`
 }
 
-func (t *TestOperator) Output(ctx interface{}) (interface{}, error) {
+func (t *TestOperator) Output(ctx *gin.Context) (interface{}, error) {
 	return nil, nil
 }
 
@@ -44,7 +46,7 @@ type TestComplexOperator struct {
 	MultipartField string   `in:"multipart" name:"upload_data"`
 }
 
-func (t *TestComplexOperator) Output(ctx interface{}) (interface{}, error) {
+func (t *TestComplexOperator) Output(ctx *gin.Context) (interface{}, error) {
 	return nil, nil
 }
 
@@ -288,4 +290,394 @@ func BenchmarkObjectPool(b *testing.B) {
 		instance := info.NewInstance()
 		info.PutInstance(instance)
 	}
+}
+
+// TestOperatorWithNoLog 测试 NoLog 标签的操作符
+type TestOperatorWithNoLog struct {
+	PublicField string `in:"query" name:"public"`
+	SecretField string `in:"query" name:"secret" log:"-"`
+	Password    string `in:"body" log:"-"`
+	Nested      TestNestedStruct
+}
+
+type TestNestedStruct struct {
+	PublicData  string `json:"public_data"`
+	PrivateData string `json:"private_data" log:"-"`
+}
+
+func (t *TestOperatorWithNoLog) Output(ctx *gin.Context) (interface{}, error) {
+	return nil, nil
+}
+
+func (t *TestOperatorWithNoLog) Method() string {
+	return "POST"
+}
+
+func (t *TestOperatorWithNoLog) Path() string {
+	return "/api/test"
+}
+
+// TestComplexNestedOperator 复杂嵌套操作符，用于测试各种场景
+type TestComplexNestedOperator struct {
+	StringField    string               `in:"query" name:"str"`
+	IntField       int                  `in:"query" name:"int_val"`
+	FloatField     float64              `in:"query" name:"float_val"`
+	BoolField      bool                 `in:"query" name:"bool_val"`
+	SliceField     []string             `in:"query" name:"tags"`
+	MapField       map[string]int       `in:"query" name:"scores"`
+	PtrField       *string              `in:"query" name:"ptr"`
+	NestedStruct   TestNestedStruct     `in:"body"`
+	NestedPtr      *TestNestedStruct    `in:"body"`
+	ArrayField     [3]int               `in:"query" name:"arr"`
+	InterfaceField interface{}          `in:"body"`
+	DeepNested     TestDeepNestedStruct `in:"body"`
+}
+
+type TestDeepNestedStruct struct {
+	Level1 string            `json:"level1"`
+	Level2 TestNestedStruct  `json:"level2"`
+	Level3 *TestNestedStruct `json:"level3"`
+}
+
+func (t *TestComplexNestedOperator) Output(ctx *gin.Context) (interface{}, error) {
+	return nil, nil
+}
+
+func (t *TestComplexNestedOperator) Method() string {
+	return "POST"
+}
+
+func (t *TestComplexNestedOperator) Path() string {
+	return "/api/complex"
+}
+
+// TestBuildLogString 测试 Log 接口的基本功能
+func TestBuildLogString(t *testing.T) {
+	ClearCache()
+
+	tests := []struct {
+		name     string
+		operator Operator
+		want     string
+	}{
+		{
+			name: "简单结构体",
+			operator: &TestOperator{
+				ID:    "123",
+				Name:  "test",
+				Email: "test@example.com",
+			},
+			want: "&{ID:123 Name:test Email:test@example.com Body:{Title: Content:}}",
+		},
+		{
+			name:     "空结构体",
+			operator: &TestOperator{},
+			want:     "&{ID: Name: Email: Body:{Title: Content:}}",
+		},
+		{
+			name: "包含 NoLog 字段",
+			operator: &TestOperatorWithNoLog{
+				PublicField: "public",
+				SecretField: "secret",
+				Password:    "password123",
+			},
+			want: "&{PublicField:public SecretField:*** Password:*** Nested:{PublicData: PrivateData:***}}",
+		},
+		{
+			name: "复杂嵌套结构体",
+			operator: &TestComplexNestedOperator{
+				StringField: "test",
+				IntField:    42,
+				FloatField:  3.14,
+				BoolField:   true,
+				SliceField:  []string{"a", "b", "c"},
+				MapField:    map[string]int{"x": 1, "y": 2},
+				NestedStruct: TestNestedStruct{
+					PublicData:  "public",
+					PrivateData: "private",
+				},
+				ArrayField: [3]int{1, 2, 3},
+			},
+			want: "&{StringField:test IntField:42 FloatField:3.14 BoolField:true SliceField:[a b c] MapField:map[x:1 y:2] PtrField:<nil> NestedStruct:{PublicData:public} NestedPtr:<nil> ArrayField:[1 2 3] InterfaceField:<nil> DeepNested:{Level1: Level2:{PublicData:} Level3:<nil>}}",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			formatter := &ParamsLog{}
+			result := formatter.Format(tt.operator)
+			assert.Equal(t, tt.want, result)
+		})
+	}
+}
+
+// TestBuildLogString_NoLogNested 测试嵌套结构体中的 NoLog 字段
+func TestBuildLogString_NoLogNested(t *testing.T) {
+	ClearCache()
+
+	operator := &TestOperatorWithNoLog{
+		PublicField: "public",
+		SecretField: "secret",
+		Password:    "password",
+		Nested: TestNestedStruct{
+			PublicData:  "public_data",
+			PrivateData: "private_data",
+		},
+	}
+
+	formatter := &ParamsLog{}
+	result := formatter.Format(operator)
+
+	// 验证敏感字段被隐藏
+	assert.Contains(t, result, "SecretField:***")
+	assert.Contains(t, result, "Password:***")
+	assert.Contains(t, result, "PrivateData:***")
+	assert.Contains(t, result, "PublicField:public")
+	assert.Contains(t, result, "PublicData:public_data")
+}
+
+// TestBuildLogString_NilValues 测试 nil 值处理
+func TestBuildLogString_NilValues(t *testing.T) {
+	ClearCache()
+
+	operator := &TestComplexNestedOperator{
+		StringField: "test",
+		PtrField:    nil,
+		NestedPtr:   nil,
+	}
+
+	formatter := &ParamsLog{}
+	result := formatter.Format(operator)
+
+	assert.Contains(t, result, "PtrField:<nil>")
+	assert.Contains(t, result, "NestedPtr:<nil>")
+}
+
+// TestBuildLogString_EmptyCollections 测试空集合
+func TestBuildLogString_EmptyCollections(t *testing.T) {
+	ClearCache()
+
+	operator := &TestComplexNestedOperator{
+		SliceField: []string{},
+		MapField:   map[string]int{},
+		ArrayField: [3]int{},
+	}
+
+	formatter := &ParamsLog{}
+	result := formatter.Format(operator)
+
+	assert.Contains(t, result, "SliceField:[]")
+	assert.Contains(t, result, "MapField:map[]")
+	assert.Contains(t, result, "ArrayField:[0 0 0]")
+}
+
+// TestBuildLogString_NilTypeInfo 测试 typeInfo 为 nil 的情况
+func TestBuildLogString_NilTypeInfo(t *testing.T) {
+	operator := &TestOperator{
+		ID:   "123",
+		Name: "test",
+	}
+
+	// 测试 typeInfo 为 nil
+	formatter := &ParamsLog{}
+	result := formatter.Format(operator)
+	// 应该回退到 fmt.Sprintf("%+v")
+	assert.Contains(t, result, "ID")
+	assert.Contains(t, result, "Name")
+}
+
+// TestBuildLogString_EmptyFields 测试空字段信息
+func TestBuildLogString_EmptyFields(t *testing.T) {
+	operator := &TestOperator{
+		ID:   "123",
+		Name: "test",
+	}
+
+	formatter := &ParamsLog{}
+	result := formatter.Format(operator)
+	// 应该回退到 fmt.Sprintf("%+v")
+	assert.Contains(t, result, "ID")
+	assert.Contains(t, result, "Name")
+}
+
+// BenchmarkBuildLogString_Simple 简单结构体的性能测试
+func BenchmarkBuildLogString_Simple(b *testing.B) {
+	ClearCache()
+	operator := &TestOperator{
+		ID:    "123",
+		Name:  "test",
+		Email: "test@example.com",
+		Body: TestRequestBody{
+			Title:   "title",
+			Content: "content",
+		},
+	}
+
+	formatter := &ParamsLog{}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		formatter.Format(operator)
+	}
+}
+
+// BenchmarkBuildLogString_Complex 复杂嵌套结构体的性能测试
+func BenchmarkBuildLogString_Complex(b *testing.B) {
+	ClearCache()
+	ptrValue := "ptr_value"
+	operator := &TestComplexNestedOperator{
+		StringField: "test_string",
+		IntField:    42,
+		FloatField:  3.14159,
+		BoolField:   true,
+		SliceField:  []string{"a", "b", "c", "d", "e"},
+		MapField:    map[string]int{"x": 1, "y": 2, "z": 3},
+		PtrField:    &ptrValue,
+		NestedStruct: TestNestedStruct{
+			PublicData:  "public",
+			PrivateData: "private",
+		},
+		NestedPtr: &TestNestedStruct{
+			PublicData:  "ptr_public",
+			PrivateData: "ptr_private",
+		},
+		ArrayField: [3]int{1, 2, 3},
+		DeepNested: TestDeepNestedStruct{
+			Level1: "level1",
+			Level2: TestNestedStruct{
+				PublicData:  "level2_public",
+				PrivateData: "level2_private",
+			},
+			Level3: &TestNestedStruct{
+				PublicData:  "level3_public",
+				PrivateData: "level3_private",
+			},
+		},
+	}
+
+	formatter := &ParamsLog{}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		formatter.Format(operator)
+	}
+}
+
+// BenchmarkBuildLogString_WithNoLog 包含 NoLog 字段的性能测试
+func BenchmarkBuildLogString_WithNoLog(b *testing.B) {
+	ClearCache()
+	operator := &TestOperatorWithNoLog{
+		PublicField: "public",
+		SecretField: "secret",
+		Password:    "password",
+		Nested: TestNestedStruct{
+			PublicData:  "public_data",
+			PrivateData: "private_data",
+		},
+	}
+	formatter := &ParamsLog{}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		formatter.Format(operator)
+	}
+}
+
+// BenchmarkFmtSprintf_Simple 对比测试：fmt.Sprintf 简单结构体
+func BenchmarkFmtSprintf_Simple(b *testing.B) {
+	operator := &TestOperator{
+		ID:    "123",
+		Name:  "test",
+		Email: "test@example.com",
+		Body: TestRequestBody{
+			Title:   "title",
+			Content: "content",
+		},
+	}
+
+	b.ResetTimer()
+	formatter := &ParamsLog{}
+	for i := 0; i < b.N; i++ {
+		formatter.Format(operator)
+	}
+}
+
+// BenchmarkFmtSprintf_Complex 对比测试：fmt.Sprintf 复杂结构体
+func BenchmarkFmtSprintf_Complex(b *testing.B) {
+	ptrValue := "ptr_value"
+	operator := &TestComplexNestedOperator{
+		StringField: "test_string",
+		IntField:    42,
+		FloatField:  3.14159,
+		BoolField:   true,
+		SliceField:  []string{"a", "b", "c", "d", "e"},
+		MapField:    map[string]int{"x": 1, "y": 2, "z": 3},
+		PtrField:    &ptrValue,
+		NestedStruct: TestNestedStruct{
+			PublicData:  "public",
+			PrivateData: "private",
+		},
+		NestedPtr: &TestNestedStruct{
+			PublicData:  "ptr_public",
+			PrivateData: "ptr_private",
+		},
+		ArrayField: [3]int{1, 2, 3},
+		DeepNested: TestDeepNestedStruct{
+			Level1: "level1",
+			Level2: TestNestedStruct{
+				PublicData:  "level2_public",
+				PrivateData: "level2_private",
+			},
+			Level3: &TestNestedStruct{
+				PublicData:  "level3_public",
+				PrivateData: "level3_private",
+			},
+		},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = fmt.Sprintf("%+v", operator)
+	}
+}
+
+// TestLogInterface 测试 Log 接口和注册功能
+func TestLogInterface(t *testing.T) {
+	ClearCache()
+
+	operator := &TestOperator{
+		ID:   "123",
+		Name: "test",
+	}
+
+	// 测试默认实现
+	defaultFormatter := &ParamsLog{}
+	result := defaultFormatter.Format(operator)
+	assert.Contains(t, result, "ID:123")
+	assert.Contains(t, result, "Name:test")
+
+	// 测试自定义实现
+	customFormatter := &CustomLogFormatter{}
+	RegisterLogFormatter(customFormatter)
+
+	// 获取注册的格式化器
+	formatter := getLogFormatter()
+	result2 := formatter.Format(operator)
+	assert.Equal(t, "CustomFormat: TestOperator", result2)
+
+	// 重置为默认
+	RegisterLogFormatter(nil)
+	formatter = getLogFormatter()
+	result3 := formatter.Format(operator)
+	assert.Contains(t, result3, "ID:123")
+}
+
+// CustomLogFormatter 自定义日志格式化器示例
+type CustomLogFormatter struct{}
+
+func (c *CustomLogFormatter) Format(operator Operator) string {
+	if operator == nil {
+		return "CustomFormat: nil"
+	}
+	return fmt.Sprintf("CustomFormat: %s", reflect.TypeOf(operator).Elem().Name())
 }

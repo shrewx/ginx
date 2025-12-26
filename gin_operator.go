@@ -219,7 +219,9 @@ func ginHandleFuncWrapper(op HandleOperator) gin.HandlerFunc {
 		}
 
 		// 显示参数绑定日志
-		showParameterBinding(typeInfo.ElemType.Name(), operator)
+		if showParams {
+			showParameterBinding(operator, typeInfo)
+		}
 
 		// 执行验证器
 		err := operator.Validate(ctx)
@@ -250,13 +252,15 @@ func ginHandleFuncWrapper(op HandleOperator) gin.HandlerFunc {
 	}
 }
 
-func showParameterBinding(name string, operator Operator) {
-	if showParams {
-		logx.Infof("Parse %s params : %+v", name, operator)
-	} else {
-		logx.Debugf("Parse %s params : %+v", name, operator)
-	}
-
+func showParameterBinding(operator Operator, typeInfo *OperatorTypeInfo) {
+	// 捕获所有错误，确保不影响 API 执行
+	defer func() {
+		if r := recover(); r != nil {
+			logx.Infof("Parse %s params : %+v", typeInfo.ElemType.Name(), operator)
+		}
+	}()
+	
+	logx.Infof("Parse %s params : %s", typeInfo.ElemType.Name(), getLogFormatter().Format(operator))
 }
 
 func ginMiddlewareWrapper(op Operator) gin.HandlerFunc {
