@@ -24,3 +24,6 @@ func (g *GetUser) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	return user, nil
 }
+
+
+

@@ -23,3 +23,5 @@ func (d *DeleteUser) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	return ginx.CommonSuccessResponse(), nil
 }
+
+

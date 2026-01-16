@@ -6,10 +6,9 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/shrewx/ginx/pkg/utils"
-
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/internal/binding"
+	"github.com/shrewx/ginx/internal/utils"
 )
 
 // ParameterBinding 快速参数绑定（更细粒度的控制）
@@ -68,9 +67,6 @@ func ParameterBinding(ctx *gin.Context, router interface{}, typeInfo *OperatorTy
 		if injectParams {
 			// 确定参数分类：form 和 urlencoded 统一归并到 form
 			inType := field.In
-			if inType == "urlencoded" {
-				inType = "form"
-			}
 
 			// 初始化对应分类的 map（如果不存在）
 			if _, ok := paramsMap[inType]; !ok {
@@ -82,7 +78,7 @@ func ParameterBinding(ctx *gin.Context, router interface{}, typeInfo *OperatorTy
 				if inType == "body" {
 					// body 字段：如果非零值则存储
 					if !fieldValue.IsZero() {
-						if bodyMap := structToMap(fieldValue, false); bodyMap != nil {
+						if bodyMap := utils.StructToMap(fieldValue, false); bodyMap != nil {
 							for k, v := range bodyMap {
 								paramsMap[inType][k] = v
 							}
@@ -237,174 +233,6 @@ func bindCookieParam(ctx *gin.Context, fieldValue reflect.Value, field FieldInfo
 	opt := binding.ParseSetOptions(field.StructField)
 	_, err = binding.SetFieldByForm(fieldValue, field.StructField, form, field.ParamName, opt)
 	return err
-}
-
-// structToMap 使用反射将结构体转换为 map[string]interface{}
-// 相比 JSON marshal/unmarshal，这种方式性能更高，避免了序列化/反序列化的开销
-func structToMap(v reflect.Value, flattenNested bool) map[string]interface{} {
-	// 处理指针类型
-	if v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			return nil
-		}
-		v = v.Elem()
-	}
-
-	// 如果不是结构体，返回 nil
-	if v.Kind() != reflect.Struct {
-		return nil
-	}
-
-	result := make(map[string]interface{})
-	t := v.Type()
-
-	// 遍历结构体字段
-	for i := 0; i < v.NumField(); i++ {
-		field := t.Field(i)
-		fieldValue := v.Field(i)
-
-		// 跳过不可导出的字段
-		if !fieldValue.CanInterface() {
-			continue
-		}
-
-		// 获取字段名：优先使用 json tag，其次使用字段名（首字母小写）
-		fieldName := getFieldName(field)
-		if fieldName == "" || fieldName == "-" {
-			continue
-		}
-
-		// 处理指针字段
-		if fieldValue.Kind() == reflect.Ptr {
-			if fieldValue.IsNil() {
-				continue
-			}
-			fieldValue = fieldValue.Elem()
-		}
-
-		// 处理嵌套结构体：递归展开
-		if fieldValue.Kind() == reflect.Struct {
-			if nestedMap := structToMap(fieldValue, false); nestedMap != nil {
-				if flattenNested {
-					for k, v := range nestedMap {
-						result[k] = v
-					}
-				} else {
-					result[fieldName] = nestedMap
-				}
-			}
-		} else if fieldValue.Kind() == reflect.Slice {
-			// 处理切片：如果元素是结构体，需要转换每个元素
-			convertedSlice := convertSliceToMap(fieldValue, false)
-			result[fieldName] = convertedSlice
-		} else if fieldValue.Kind() == reflect.Map {
-			// 处理 map：如果值是结构体，需要转换每个值
-			convertedMap := convertMapToMap(fieldValue, false)
-			result[fieldName] = convertedMap
-		} else {
-			// 普通字段直接添加
-			result[fieldName] = fieldValue.Interface()
-		}
-	}
-
-	return result
-}
-
-// convertSliceToMap 将切片转换为 []interface{}，如果元素是结构体则转换为 map
-func convertSliceToMap(sliceValue reflect.Value, flattenNested bool) interface{} {
-	if sliceValue.IsNil() || sliceValue.Len() == 0 {
-		return sliceValue.Interface()
-	}
-
-	elementType := sliceValue.Type().Elem()
-	// 如果元素是指针类型，获取指向的类型
-	if elementType.Kind() == reflect.Ptr {
-		elementType = elementType.Elem()
-	}
-
-	// 如果元素是结构体类型，需要转换每个元素
-	if elementType.Kind() == reflect.Struct {
-		result := make([]interface{}, sliceValue.Len())
-		for i := 0; i < sliceValue.Len(); i++ {
-			elem := sliceValue.Index(i)
-			// 处理指针元素
-			if elem.Kind() == reflect.Ptr {
-				if elem.IsNil() {
-					result[i] = nil
-					continue
-				}
-				elem = elem.Elem()
-			}
-			// 转换结构体为 map
-			if elemMap := structToMap(elem, flattenNested); elemMap != nil {
-				result[i] = elemMap
-			} else {
-				result[i] = elem.Interface()
-			}
-		}
-		return result
-	}
-
-	// 非结构体切片直接返回
-	return sliceValue.Interface()
-}
-
-// convertMapToMap 将 map 转换为 map[string]interface{}，如果值是结构体则转换为 map
-func convertMapToMap(mapValue reflect.Value, flattenNested bool) interface{} {
-	if mapValue.IsNil() || mapValue.Len() == 0 {
-		return mapValue.Interface()
-	}
-
-	valueType := mapValue.Type().Elem()
-	// 如果值是指针类型，获取指向的类型
-	if valueType.Kind() == reflect.Ptr {
-		valueType = valueType.Elem()
-	}
-
-	// 如果值是结构体类型，需要转换每个值
-	if valueType.Kind() == reflect.Struct {
-		result := make(map[string]interface{}, mapValue.Len())
-		for _, key := range mapValue.MapKeys() {
-			value := mapValue.MapIndex(key)
-			// 处理指针值
-			if value.Kind() == reflect.Ptr {
-				if value.IsNil() {
-					result[key.String()] = nil
-					continue
-				}
-				value = value.Elem()
-			}
-			// 转换结构体为 map
-			if valueMap := structToMap(value, flattenNested); valueMap != nil {
-				result[key.String()] = valueMap
-			} else {
-				result[key.String()] = value.Interface()
-			}
-		}
-		return result
-	}
-
-	// 非结构体 map 直接返回
-	return mapValue.Interface()
-}
-
-// getFieldName 获取字段的 JSON 标签名，如果没有则返回首字母小写的字段名
-func getFieldName(field reflect.StructField) string {
-	jsonTag := field.Tag.Get("name")
-	if jsonTag == "" {
-		jsonTag = field.Tag.Get("json")
-	}
-	if jsonTag != "" {
-		// 处理 json tag 中的选项，如 "name,omitempty"
-		if idx := strings.Index(jsonTag, ","); idx != -1 {
-			jsonTag = jsonTag[:idx]
-		}
-		if jsonTag != "" && jsonTag != "-" {
-			return jsonTag
-		}
-	}
-	// 如果没有 json tag，使用首字母小写的字段名
-	return utils.FirstLower(field.Name)
 }
 
 func InjectParsedParams(ctx *gin.Context) {

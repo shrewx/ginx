@@ -54,3 +54,5 @@ func (s *UserService) ListUsers(ctx context.Context, offset, limit int) ([]*mode
 func (s *UserService) CountUsers(ctx context.Context) (int64, error) {
 	return s.userController.Count(ctx)
 }
+
+

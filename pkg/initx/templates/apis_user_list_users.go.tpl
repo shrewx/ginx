@@ -45,3 +45,5 @@ func (l *ListUsers) Output(ctx *gin.Context) (interface{}, error) {
 		Total: total,
 	}, nil
 }
+
+

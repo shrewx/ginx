@@ -52,3 +52,5 @@ func (c *CreateUser) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	return ginx.CommonSuccessResponse(), nil
 }
+
+

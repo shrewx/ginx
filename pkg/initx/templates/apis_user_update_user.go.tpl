@@ -52,3 +52,6 @@ func (u *UpdateUser) Output(ctx *gin.Context) (interface{}, error) {
 	return ginx.CommonSuccessResponse(), nil
 }
 
+
+
+
