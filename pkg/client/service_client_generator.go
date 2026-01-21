@@ -95,6 +95,50 @@ config.Apply(opts...)
 				codegen.Return(codegen.Id("config")),
 			),
 	)
+
+	// 生成 invoker 相关辅助方法
+	// getSyncInvoker
+	g.File.WriteBlock(
+		codegen.Func().
+			Named("getSyncInvoker").
+			MethodOf(codegen.Var(codegen.Star(codegen.Type(g.ClientInstanceName())), "c")).
+			Return(codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "SyncInvoker")))).
+			Do(
+				codegen.Expr(`if c.syncInvoker != nil {
+	return c.syncInvoker
+}
+`),
+				codegen.Expr("client := &c.Client"),
+				codegen.Return(codegen.Id("client")),
+			),
+	)
+
+	// getAsyncInvoker
+	g.File.WriteBlock(
+		codegen.Func().
+			Named("getAsyncInvoker").
+			MethodOf(codegen.Var(codegen.Star(codegen.Type(g.ClientInstanceName())), "c")).
+			Return(codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "AsyncInvoker")))).
+			Do(
+				codegen.Return(codegen.Id("c.asyncInvoker")),
+			),
+	)
+
+	// getInvokeMode
+	g.File.WriteBlock(
+		codegen.Func(
+			codegen.Var(codegen.Star(codegen.Type(g.File.Use(ginxModulePath, "RequestConfig"))), "config"),
+		).
+			Named("getInvokeMode").
+			MethodOf(codegen.Var(codegen.Star(codegen.Type(g.ClientInstanceName())), "c")).
+			Return(codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "InvokeMode")))).
+			Do(
+				codegen.Expr(`if config != nil && config.InvokeMode != nil {
+	return *config.InvokeMode
+}`),
+				codegen.Return(codegen.Id("c.defaultMode")),
+			),
+	)
 }
 
 func (g *ServiceClientGenerator) WriteClientInterface(ctx context.Context, openapi *oas.OpenAPI) {
@@ -143,9 +187,11 @@ func (g *ServiceClientGenerator) WriteClient() {
 	Client: c,
 	interceptors: make([]?, 0),
 	defaultReqConfig: ?,
+	defaultMode: ?,
 }`, codegen.Type(g.ClientInstanceName()),
 				codegen.Id(g.File.Use(ginxModulePath, "Interceptor")),
-				codegen.Call(g.File.Use(ginxModulePath, "NewRequestConfig"))),
+				codegen.Call(g.File.Use(ginxModulePath, "NewRequestConfig")),
+				codegen.Id(g.File.Use(ginxModulePath, "SyncMode"))),
 			codegen.Expr(`
 // 应用客户端选项
 for _, opt := range opts {
@@ -164,6 +210,9 @@ for _, opt := range opts {
 				codegen.Var(codegen.Type(g.File.Use("context", "Context")), "ctx"),
 				codegen.Var(codegen.Slice(codegen.Type(g.File.Use(ginxModulePath, "Interceptor"))), "interceptors"),
 				codegen.Var(codegen.Star(codegen.Type(g.File.Use(ginxModulePath, "RequestConfig"))), "defaultReqConfig"),
+				codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "SyncInvoker")), "syncInvoker"),
+				codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "AsyncInvoker")), "asyncInvoker"),
+				codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "InvokeMode")), "defaultMode"),
 			),
 				g.ClientInstanceName(),
 			),
@@ -187,8 +236,10 @@ func (g *ServiceClientGenerator) OperationMethod(ctx context.Context, operation 
 
 	returns := make([]*codegen.SnippetField, 0)
 
+	var respType codegen.SnippetType
+
 	if mediaType != nil {
-		respType, _ := NewTypeGenerator(g.ServiceName, g.File).Type(ctx, mediaType.Schema)
+		respType, _ = NewTypeGenerator(g.ServiceName, g.File).Type(ctx, mediaType.Schema)
 
 		if respType != nil {
 			returns = append(returns, codegen.Var(codegen.Star(respType)))
@@ -212,8 +263,68 @@ func (g *ServiceClientGenerator) OperationMethod(ctx context.Context, operation 
 		MethodOf(codegen.Var(codegen.Star(codegen.Type(g.ClientInstanceName())), "c"))
 
 	if hasReq {
-		return m.Do(codegen.Return(codegen.Expr("req.InvokeAndBind(c.Context(), c.Client, c.buildRequestConfig(opts...))")))
+		if len(returns) > 1 {
+			return m.Do(
+				codegen.Expr("config := c.buildRequestConfig(opts...)"),
+				codegen.Expr("mode := c.getInvokeMode(config)"),
+				codegen.Expr("syncInvoker := c.getSyncInvoker()"),
+				codegen.Expr("asyncInvoker := c.getAsyncInvoker()"),
+				codegen.Expr("resp := new(?)", respType),
+				codegen.Expr("if err := ?(c.Context(), req, resp, config, mode, syncInvoker, asyncInvoker); err != nil {", codegen.Id(g.File.Use(ginxModulePath, "InvokeWithMode"))),
+				codegen.Expr("return nil, err"),
+				codegen.Expr("}"),
+				codegen.Return(codegen.Id("resp"), codegen.Nil),
+			)
+		}
+
+		return m.Do(
+			codegen.Expr("config := c.buildRequestConfig(opts...)"),
+			codegen.Expr("mode := c.getInvokeMode(config)"),
+			codegen.Expr("syncInvoker := c.getSyncInvoker()"),
+			codegen.Expr("asyncInvoker := c.getAsyncInvoker()"),
+			codegen.Return(codegen.Call(g.File.Use(ginxModulePath, "InvokeWithMode"),
+				codegen.Call(g.File.Use("context", "Background")),
+				codegen.Id("req"),
+				codegen.Nil,
+				codegen.Id("config"),
+				codegen.Id("mode"),
+				codegen.Id("syncInvoker"),
+				codegen.Id("asyncInvoker"),
+			)),
+		)
 	}
 
-	return m.Do(codegen.Return(codegen.Expr("(&?{}).InvokeAndBind(c.Context(), c.Client, c.buildRequestConfig(opts...))", codegen.Type(operation.OperationId))))
+	// 无请求体的场景，构造空请求实例
+	if len(returns) > 1 {
+		return m.Do(
+			codegen.Expr("config := c.buildRequestConfig(opts...)"),
+			codegen.Expr("mode := c.getInvokeMode(config)"),
+			codegen.Expr("req := &?{}", codegen.Type(operation.OperationId)),
+			codegen.Expr("syncInvoker := c.getSyncInvoker()"),
+			codegen.Expr("asyncInvoker := c.getAsyncInvoker()"),
+			codegen.Expr("resp := new(?)", respType),
+			codegen.Expr("if err := ?(c.Context(), req, resp, config, mode, syncInvoker, asyncInvoker); err != nil {", codegen.Id(g.File.Use(ginxModulePath, "InvokeWithMode"))),
+			codegen.Expr("return nil, err"),
+			codegen.Expr("}"),
+			codegen.Return(codegen.Id("resp"), codegen.Nil),
+		)
+	}
+
+	// 无返回体，仅 error
+	return m.Do(
+		codegen.Expr("config := c.buildRequestConfig(opts...)"),
+		codegen.Expr("mode := c.getInvokeMode(config)"),
+		codegen.Expr("req := &?{}", codegen.Type(operation.OperationId)),
+		codegen.Expr("syncInvoker := c.getSyncInvoker()"),
+		codegen.Expr("asyncInvoker := c.getAsyncInvoker()"),
+		codegen.Return(codegen.Call(g.File.Use(ginxModulePath, "InvokeWithMode"),
+			codegen.Call(g.File.Use("context", "Background")),
+			codegen.Id("req"),
+			codegen.Nil,
+			codegen.Id("config"),
+			codegen.Id("mode"),
+			codegen.Id("syncInvoker"),
+			codegen.Id("asyncInvoker"),
+		)),
+	)
 }

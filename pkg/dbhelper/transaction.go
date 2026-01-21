@@ -1,7 +1,7 @@
 package dbhelper
 
 import (
-	"golang.org/x/net/context"
+	"context"
 	"gorm.io/gorm"
 )
 

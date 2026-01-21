@@ -97,4 +97,52 @@ func (g *OptionsGenerator) Scan() {
 				)),
 			),
 	)
+
+	// WithSyncInvoker
+	g.File.WriteBlock(
+		codegen.Comments("WithSyncInvoker 注册同步调用器"),
+		codegen.Func(
+			codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "SyncInvoker")), "invoker"),
+		).Named("WithSyncInvoker").
+			Return(codegen.Var(codegen.Type("ClientOption"))).
+			Do(
+				codegen.Return(codegen.Func(
+					codegen.Var(codegen.Star(codegen.Type(g.ClientInstanceName())), "c"),
+				).Do(
+					codegen.Expr("c.syncInvoker = invoker"),
+				)),
+			),
+	)
+
+	// WithAsyncInvoker
+	g.File.WriteBlock(
+		codegen.Comments("WithAsyncInvoker 注册异步调用器"),
+		codegen.Func(
+			codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "AsyncInvoker")), "invoker"),
+		).Named("WithAsyncInvoker").
+			Return(codegen.Var(codegen.Type("ClientOption"))).
+			Do(
+				codegen.Return(codegen.Func(
+					codegen.Var(codegen.Star(codegen.Type(g.ClientInstanceName())), "c"),
+				).Do(
+					codegen.Expr("c.asyncInvoker = invoker"),
+				)),
+			),
+	)
+
+	// WithDefaultInvokeMode
+	g.File.WriteBlock(
+		codegen.Comments("WithDefaultInvokeMode 设置默认调用模式"),
+		codegen.Func(
+			codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "InvokeMode")), "mode"),
+		).Named("WithDefaultInvokeMode").
+			Return(codegen.Var(codegen.Type("ClientOption"))).
+			Do(
+				codegen.Return(codegen.Func(
+					codegen.Var(codegen.Star(codegen.Type(g.ClientInstanceName())), "c"),
+				).Do(
+					codegen.Expr("c.defaultMode = mode"),
+				)),
+			),
+	)
 }

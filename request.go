@@ -2,10 +2,10 @@ package ginx
 
 import (
 	"bytes"
+	"context"
 	"github.com/bytedance/sonic"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
-	"golang.org/x/net/context"
 	"net/http"
 	"sort"
 )
@@ -39,7 +39,7 @@ func NewRequestWithContext(ctx context.Context, method string, rawUrl string, da
 	if err != nil {
 		return nil, err
 	}
-	
+
 	req.Header = header
 
 	// 应用 HTTPRequestOption 配置
