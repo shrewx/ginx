@@ -127,13 +127,15 @@ func InvokeWithMode(
 	req interface{},
 	resp interface{},
 	config *RequestConfig,
-	mode InvokeMode,
 	syncInvoker SyncInvoker,
 	asyncInvoker AsyncInvoker,
 ) error {
+
+	mode := SyncMode
 	// 将 RequestConfig 写入 context
 	if config != nil {
 		ctx = context.WithValue(ctx, RequestConfigKey{}, config)
+		mode = *config.InvokeMode
 	}
 
 	// 异步模式且存在异步 invoker

@@ -1,12 +1,15 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"github.com/shrewx/ginx"
 	"net/http"
 	"regexp"
 	"strings"
+	"text/template"
+
+	"github.com/shrewx/ginx"
 
 	"github.com/go-courier/codegen"
 	"github.com/go-courier/oas"
@@ -68,10 +71,51 @@ func toColonPath(path string) string {
 	})
 }
 
+// OperationTemplateData 操作模板数据
+type OperationTemplateData struct {
+	Package    string
+	Operations []OperationTemplateItem
+}
+
+// OperationTemplateItem 单个操作的数据
+type OperationTemplateItem struct {
+	OperationId  string
+	Summary      string
+	Fields       []string
+	Path         string
+	Method       string
+	HasResp      bool
+	RespType     string
+	StatusErrors []string
+}
+
 func (g *OperationGenerator) Scan(ctx context.Context, openapi *oas.OpenAPI) {
+	// 收集所有操作数据
+	operations := make([]OperationTemplateItem, 0)
 	eachOperation(openapi, func(method string, path string, op *oas.Operation) {
-		g.WriteOperation(ctx, method, path, op)
+		operations = append(operations, g.buildOperationData(ctx, method, path, op))
 	})
+
+	// 准备模板数据
+	pkgName := codegen.LowerSnakeCase("Client-" + g.ServiceName)
+	data := OperationTemplateData{
+		Package:    pkgName,
+		Operations: operations,
+	}
+
+	// 渲染模板
+	tmpl, err := template.New("operation").Parse(TplOperation)
+	if err != nil {
+		panic(err)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		panic(err)
+	}
+
+	// 写入生成的代码
+	g.File.Write(buf.Bytes())
 }
 
 func (g *OperationGenerator) ID(id string) string {
@@ -81,7 +125,8 @@ func (g *OperationGenerator) ID(id string) string {
 	return id
 }
 
-func (g *OperationGenerator) WriteOperation(ctx context.Context, method string, path string, operation *oas.Operation) {
+// buildOperationData 构建操作数据
+func (g *OperationGenerator) buildOperationData(ctx context.Context, method string, path string, operation *oas.Operation) OperationTemplateItem {
 	id := operation.OperationId
 
 	fields := make([]*codegen.SnippetField, 0)
@@ -96,106 +141,42 @@ func (g *OperationGenerator) WriteOperation(ctx context.Context, method string, 
 
 	fields = append(fields, g.FormField(ctx, operation.RequestBody)...)
 
-	g.File.WriteBlock(
-		codegen.DeclType(
-			codegen.Var(codegen.Struct(fields...), id),
-		),
-	)
+	// 转换字段为模板数据
+	// 直接生成整个结构体的代码，然后解析提取字段信息（比单独生成每个字段更高效）
+	fieldData := g.extractFieldsFromStruct(fields)
 
-	g.File.WriteBlock(
-		codegen.Func().
-			Named("Path").Return(codegen.Var(codegen.String)).
-			MethodOf(codegen.Var(codegen.Star(codegen.Type(id)))).
-			Do(codegen.Return(g.File.Val(path))),
-	)
-
-	g.File.WriteBlock(
-		codegen.Func().
-			Named("Method").Return(codegen.Var(codegen.String)).
-			MethodOf(codegen.Var(codegen.Star(codegen.Type(id)))).
-			Do(codegen.Return(g.File.Val(method))),
-	)
-
+	// 获取响应类型和状态错误
 	respType, statusErrors := g.ResponseType(ctx, &operation.Responses)
-
-	g.File.Write(codegen.Comments(statusErrors...).Bytes())
-
-	g.File.WriteBlock(
-		codegen.Func(
-			codegen.Var(codegen.Type(g.File.Use("context", "Context")), "ctx"),
-			codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "Client")), "c"),
-		).
-			Return(
-				codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "ResponseBind"))),
-				codegen.Var(codegen.Error),
-			).
-			Named("Invoke").
-			MethodOf(codegen.Var(codegen.Star(codegen.Type(id)), "req")).
-			Do(
-				codegen.Expr(`return c.Invoke(ctx, req)`),
-			),
-	)
-
+	var respTypeStr string
+	hasResp := false
 	if respType != nil {
-		g.File.WriteBlock(
-			codegen.Func(
-				codegen.Var(codegen.Type(g.File.Use("context", "Context")), "ctx"),
-				codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "Client")), "c"),
-				codegen.Var(codegen.Star(codegen.Type(g.File.Use(ginxModulePath, "RequestConfig"))), "config"),
-			).
-				Return(
-					codegen.Var(codegen.Star(respType)),
-					codegen.Var(codegen.Error),
-				).
-				Named("InvokeAndBind").
-				MethodOf(codegen.Var(codegen.Star(codegen.Type(id)), "req")).
-				Do(
-					codegen.Expr("resp := new(?)", respType),
-					codegen.Expr(`
-// 将配置注入到 context
-if config != nil {
-	ctx = context.WithValue(ctx, ?{}, config)
-}
-
-response, err := req.Invoke(ctx, c)
-if err != nil {
-	return nil, err
-}
-if err = response.Bind(resp); err != nil {
-	return nil, err
-}
-`, codegen.Type(g.File.Use(ginxModulePath, "RequestConfigKey"))),
-					codegen.Return(codegen.Id("resp"), codegen.Id("err")),
-				),
-		)
-
-		return
+		respTypeStr = string(respType.Bytes())
+		hasResp = true
 	}
 
-	g.File.WriteBlock(
-		codegen.Func(
-			codegen.Var(codegen.Type(g.File.Use("context", "Context")), "ctx"),
-			codegen.Var(codegen.Type(g.File.Use(ginxModulePath, "Client")), "c"),
-			codegen.Var(codegen.Star(codegen.Type(g.File.Use(ginxModulePath, "RequestConfig"))), "config"),
-		).
-			Return(
-				codegen.Var(codegen.Error),
-			).
-			Named("InvokeAndBind").
-			MethodOf(codegen.Var(codegen.Star(codegen.Type(id)), "req")).
-			Do(
-				codegen.Expr(`
-// 将配置注入到 context
-if config != nil {
-	ctx = context.WithValue(ctx, ?{}, config)
+	return OperationTemplateItem{
+		OperationId:  id,
+		Summary:      operation.Summary,
+		Fields:       fieldData,
+		Path:         fmt.Sprintf("%q", path),
+		Method:       fmt.Sprintf("%q", method),
+		HasResp:      hasResp,
+		RespType:     respTypeStr,
+		StatusErrors: statusErrors,
+	}
 }
 
-_, err := req.Invoke(ctx, c)
-`, codegen.Type(g.File.Use(ginxModulePath, "RequestConfigKey"))),
-				codegen.Return(codegen.Id("err")),
-			),
-	)
+// extractFieldsFromStruct 从结构体字段列表中提取字段信息
+func (g *OperationGenerator) extractFieldsFromStruct(fields []*codegen.SnippetField) []string {
+	if len(fields) == 0 {
+		return nil
+	}
+	var fieldList []string
+	for i := range fields {
+		fieldList = append(fieldList, string(fields[i].Bytes()))
+	}
 
+	return fieldList
 }
 
 func (g *OperationGenerator) ParamField(ctx context.Context, parameter *oas.Parameter) *codegen.SnippetField {
