@@ -10,13 +10,6 @@ import (
 // ClientOption 用于配置客户端的选项
 type ClientOption func(*{{ .ClientInstanceName }})
 
-// WithInterceptors 批量添加拦截器
-func WithInterceptors(interceptors ...ginx.Interceptor) ClientOption {
-	return func(c *{{ .ClientInstanceName }}) {
-		c.interceptors = append(c.interceptors, interceptors...)
-	}
-}
-
 // WithDefaultHeaders 批量设置默认 Headers
 func WithDefaultHeaders(headers map[string]string) ClientOption {
 	return func(c *{{ .ClientInstanceName }}) {
@@ -57,7 +50,7 @@ func WithAsyncInvoker(invoker ginx.AsyncInvoker) ClientOption {
 // WithDefaultInvokeMode 设置默认调用模式
 func WithDefaultInvokeMode(mode ginx.InvokeMode) ClientOption {
 	return func(c *{{ .ClientInstanceName }}) {
-		c.defaultMode = mode
+		c.defaultReqConfig.InvokeMode = mode
 	}
 }
 

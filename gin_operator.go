@@ -106,7 +106,9 @@ func initGinEngine(r *GinRouter) *gin.Engine {
 	// internal middleware
 	root.Use(middleware.Recovery())
 	root.Use(middleware.CORS())
-	root.Use(middleware.Telemetry(traceAgent))
+	if traceAgent != nil {
+		root.Use(middleware.Telemetry(traceAgent))
+	}
 
 	// 收集所有操作符用于预热缓存
 	var allOperators []interface{}
@@ -259,7 +261,7 @@ func showParameterBinding(operator Operator, typeInfo *OperatorTypeInfo) {
 			logx.Infof("Parse %s params : %+v", typeInfo.ElemType.Name(), operator)
 		}
 	}()
-	
+
 	logx.Infof("Parse %s params : %s", typeInfo.ElemType.Name(), getLogFormatter().Format(operator))
 }
 

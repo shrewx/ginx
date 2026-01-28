@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
-	"net"
 	"net/http"
 	"net/textproto"
 	"net/url"
@@ -22,7 +21,6 @@ import (
 	"github.com/go-courier/reflectx"
 	"github.com/shrewx/ginx/pkg/statuserror"
 	"github.com/spf13/cast"
-	"golang.org/x/net/http2"
 )
 
 const (
@@ -36,13 +34,22 @@ const (
 	Cookies   = "cookies"
 )
 
-const DefaultTimeout = 5 * time.Second
+const DefaultTimeout = 60 * time.Second
 
+// Client 底层 HTTP 客户端
 type Client struct {
-	Protocol string
-	Host     string
-	Port     uint16
-	Timeout  time.Duration
+	config ClientConfig
+}
+
+// NewClient 创建新的客户端
+func NewClient(config ClientConfig) *Client {
+	if config.Protocol == "" {
+		config.Protocol = "http"
+	}
+	if config.Timeout == 0 {
+		config.Timeout = DefaultTimeout
+	}
+	return &Client{config: config}
 }
 
 type MultipartFile struct {
@@ -52,45 +59,52 @@ type MultipartFile struct {
 	Data io.Reader
 }
 
-func (f *Client) Invoke(ctx context.Context, req interface{}) (ResponseBind, error) {
-	request, ok := req.(*http.Request)
-	if !ok {
-		request2, err := f.newRequest(ctx, req)
+// Invoke 执行请求（核心方法）
+func (c *Client) Invoke(ctx context.Context, req interface{}, opts ...RequestOption) (ResponseBind, error) {
+	// 1. 构建请求配置
+	requestConfig := buildRequestConfig(opts...)
+
+	// 2. 构建 HTTP 请求
+	// 如果 req 已经是 *http.Request，直接使用；否则通过 newRequest 构建
+	var httpReq *http.Request
+	var err error
+	if httpRequest, ok := req.(*http.Request); ok {
+		httpReq = httpRequest
+	} else {
+		httpReq, err = c.newRequest(ctx, req)
 		if err != nil {
 			return nil, err
 		}
-		request = request2
 	}
 
-	// 从 context 中获取 RequestConfig 并应用到 HTTP 请求
-	if config := GetRequestConfigFromContext(ctx); config != nil {
-		applyRequestConfig(request, config)
-	}
+	// 3. 应用请求配置到 HTTP 请求
+	applyRequestConfig(httpReq, requestConfig)
 
-	httpClient := ClientFromContext(ctx)
-	if httpClient == nil {
-		timeout := f.Timeout
-		// 如果 RequestConfig 中有 timeout，使用它
-		if config := GetRequestConfigFromContext(ctx); config != nil && config.Timeout != nil {
-			timeout = *config.Timeout
-		}
-		httpClient = GetShortConnClientContext(ctx, timeout)
-	}
+	// 4. 获取或创建 HTTP Client
+	httpClient := getHTTPClient(&c.config, requestConfig, ctx)
 
+	// 5. 注入 OpenTelemetry 追踪信息
 	if ctxReq, ok := ctx.Value(RequestContextKey).(*http.Request); ok {
-		otel.GetTextMapPropagator().Inject(ctxReq.Context(), propagation.HeaderCarrier(request.Header))
+		otel.GetTextMapPropagator().Inject(ctxReq.Context(), propagation.HeaderCarrier(httpReq.Header))
 	}
 
-	resp, err := httpClient.Do(request)
+	// 6. 执行请求
+	resp, err := httpClient.Do(httpReq)
 	if err != nil {
 		return nil, err
 	}
-	return &Result{
-		Response: resp,
-	}, nil
+
+	return &Result{Response: resp}, nil
 }
 
-func (f *Client) newRequest(ctx context.Context, req interface{}) (*http.Request, error) {
+// buildRequestConfig 构建请求配置
+func buildRequestConfig(opts ...RequestOption) *RequestConfig {
+	config := NewRequestConfig()
+	config.Apply(opts...)
+	return config
+}
+
+func (c *Client) newRequest(ctx context.Context, req interface{}) (*http.Request, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -105,7 +119,7 @@ func (f *Client) newRequest(ctx context.Context, req interface{}) (*http.Request
 		path = pathDescriber.Path()
 	}
 
-	request, err := f.newRequestWithContext(ctx, method, f.toUrl(path), req)
+	request, err := c.newRequestWithContext(ctx, method, c.toUrl(path), req)
 	if err != nil {
 		return nil, err
 	}
@@ -117,14 +131,14 @@ func (f *Client) newRequest(ctx context.Context, req interface{}) (*http.Request
 // 这是客户端的核心函数，负责解析结构体字段的in标签，
 // 并将字段值绑定到HTTP请求的不同部分（header、query、body等）
 // 支持多种数据格式：JSON、表单、multipart、URL编码等
-func (f *Client) newRequestWithContext(ctx context.Context, method string, rawUrl string, v interface{}) (*http.Request, error) {
+func (c *Client) newRequestWithContext(ctx context.Context, method string, rawUrl string, v interface{}) (*http.Request, error) {
 	header := http.Header{}
 	// 从上下文获取语言设置，支持国际化
 	lang, ok := ctx.Value(CurrentLangHeader()).(string)
 	if ok {
 		header.Add(CurrentLangHeader(), lang)
 	} else {
-		header.Add(CurrentLangHeader(), ginx.i18nLang)
+		header.Add(CurrentLangHeader(), I18nZH)
 	}
 
 	// 处理空请求体的情况
@@ -266,56 +280,16 @@ func (f *Client) newRequestWithContext(ctx context.Context, method string, rawUr
 	return req, nil
 }
 
-func (f *Client) toUrl(path string) string {
-	protocol := f.Protocol
+func (c *Client) toUrl(path string) string {
+	protocol := c.config.Protocol
 	if protocol == "" {
 		protocol = "http"
 	}
-	url := fmt.Sprintf("%s://%s", protocol, f.Host)
-	if f.Port > 0 {
-		url = fmt.Sprintf("%s:%d", url, f.Port)
+	url := fmt.Sprintf("%s://%s", protocol, c.config.Host)
+	if c.config.Port > 0 {
+		url = fmt.Sprintf("%s:%d", url, c.config.Port)
 	}
 	return url + path
-}
-
-func GetShortConnClientContext(ctx context.Context, clientTimeout time.Duration) *http.Client {
-	t := DefaultHttpTransportFromContext(ctx)
-
-	if t != nil {
-		t = t.Clone()
-	} else {
-		t = &http.Transport{
-			DialContext: (&net.Dialer{
-				Timeout:   5 * time.Second,
-				KeepAlive: 0,
-			}).DialContext,
-			DisableKeepAlives:     true,
-			TLSHandshakeTimeout:   5 * time.Second,
-			ResponseHeaderTimeout: 5 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-		}
-	}
-
-	if err := http2.ConfigureTransport(t); err != nil {
-		// HTTP/2 configuration failed, continue with HTTP/1.1
-		// This is not a fatal error, just log it for debugging
-		// Could add logging here if needed: log.Printf("HTTP/2 configuration failed: %v", err)
-	}
-
-	timeout := DefaultClientTimeout(ctx)
-	if timeout != nil {
-		clientTimeout = *timeout
-	} else {
-		clientTimeout = DefaultTimeout
-	}
-
-	client := &http.Client{
-		Timeout: clientTimeout,
-		// Transport: otelhttp.NewTransport(t),
-		Transport: t,
-	}
-
-	return client
 }
 
 type Result struct {

@@ -47,7 +47,7 @@ type Header interface {
 }
 
 type Invoker interface {
-	Invoke(ctx context.Context, req interface{}) (ResponseBind, error)
+	Invoke(ctx context.Context, req interface{}, opts ...RequestOption) (ResponseBind, error)
 }
 
 // SyncInvoker 同步调用接口，等价于 Invoker
@@ -55,7 +55,7 @@ type SyncInvoker = Invoker
 
 // AsyncInvoker 异步调用接口，由业务侧实现具体异步发送逻辑
 type AsyncInvoker interface {
-	InvokeAsync(ctx context.Context, req interface{}) error
+	InvokeAsync(ctx context.Context, req interface{}, opts ...RequestOption) error
 }
 
 type ResponseBind interface {

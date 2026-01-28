@@ -429,9 +429,9 @@ func TestBuildLogString_NoLogNested(t *testing.T) {
 	result := formatter.Format(operator)
 
 	// 验证敏感字段被隐藏
-	assert.Contains(t, result, "SecretField:***")
-	assert.Contains(t, result, "Password:***")
-	assert.Contains(t, result, "PrivateData:***")
+	assert.NotContains(t, result, "SecretField:")
+	assert.NotContains(t, result, "Password:")
+	assert.NotContains(t, result, "PrivateData:")
 	assert.Contains(t, result, "PublicField:public")
 	assert.Contains(t, result, "PublicData:public_data")
 }

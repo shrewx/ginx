@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -16,7 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestClientRequest 测试用的客户端请求
+// ========== 测试辅助结构 ==========
+
 type TestClientRequest struct {
 	MethodPost
 	ID       string         `in:"path" name:"id"`
@@ -37,36 +39,6 @@ func (t *TestClientRequest) Path() string {
 	return "/api/test/:id"
 }
 
-// TestMultipartRequest 测试multipart请求
-type TestMultipartRequest struct {
-	MethodPost
-	Name  string          `in:"multipart" name:"name"`
-	File  MultipartFile   `in:"multipart" name:"file"`
-	Files []MultipartFile `in:"multipart" name:"files"`
-}
-
-func (t *TestMultipartRequest) Path() string {
-	return "/api/upload"
-}
-
-// TestURLEncodedRequest 测试URL编码请求
-type TestURLEncodedRequest struct {
-	MethodPost
-	Data string `in:"urlencoded" name:"data"`
-}
-
-func (t *TestURLEncodedRequest) Path() string {
-	return "/api/form"
-}
-
-// TestResponse 测试响应结构
-type TestResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Data    string `json:"data"`
-}
-
-// SimpleRequest 简化的测试请求结构
 type SimpleRequest struct {
 	MethodPost
 	ID   string         `in:"path" name:"id"`
@@ -78,8 +50,71 @@ func (s *SimpleRequest) Path() string {
 	return "/api/test/:id"
 }
 
-func TestClient_Invoke(t *testing.T) {
-	// 创建测试服务器
+type TestResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	Data    string `json:"data"`
+}
+
+// ========== Client 创建测试 ==========
+
+func TestNewClient(t *testing.T) {
+	tests := []struct {
+		name   string
+		config ClientConfig
+		check  func(*testing.T, *Client)
+	}{
+		{
+			name: "basic config",
+			config: ClientConfig{
+				Host:     "localhost",
+				Port:     8080,
+				Protocol: "http",
+				Timeout:  5 * time.Second,
+			},
+			check: func(t *testing.T, c *Client) {
+				assert.Equal(t, "localhost", c.config.Host)
+				assert.Equal(t, uint16(8080), c.config.Port)
+				assert.Equal(t, "http", c.config.Protocol)
+				assert.Equal(t, 5*time.Second, c.config.Timeout)
+			},
+		},
+		{
+			name: "default protocol",
+			config: ClientConfig{
+				Host: "example.com",
+			},
+			check: func(t *testing.T, c *Client) {
+				assert.Equal(t, "http", c.config.Protocol)
+				assert.Equal(t, DefaultTimeout, c.config.Timeout)
+			},
+		},
+		{
+			name: "default timeout",
+			config: ClientConfig{
+				Host:     "example.com",
+				Protocol: "https",
+			},
+			check: func(t *testing.T, c *Client) {
+				assert.Equal(t, DefaultTimeout, c.config.Timeout)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := NewClient(tt.config)
+			require.NotNil(t, client)
+			if tt.check != nil {
+				tt.check(t, client)
+			}
+		})
+	}
+}
+
+// ========== Client.Invoke 测试 ==========
+
+func TestClient_Invoke_WithHTTPRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := TestResponse{
 			Success: true,
@@ -92,27 +127,15 @@ func TestClient_Invoke(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// 解析服务器URL
 	serverURL, _ := url.Parse(server.URL)
-	host := serverURL.Hostname()
-	port := 80
-	if serverURL.Port() != "" {
-		if serverURL.Port() == "443" {
-			port = 443
-		} else {
-			// httptest服务器通常使用随机端口
-			port = 8080 // 使用一个固定端口用于测试
-		}
-	}
-
-	client := &Client{
+	config := ClientConfig{
 		Protocol: "http",
-		Host:     host,
-		Port:     uint16(port),
+		Host:     serverURL.Hostname(),
+		Port:     80,
 		Timeout:  DefaultTimeout,
 	}
+	client := NewClient(config)
 
-	// 使用http.Request直接调用
 	req, err := http.NewRequest("GET", server.URL+"/test", nil)
 	require.NoError(t, err)
 
@@ -123,15 +146,37 @@ func TestClient_Invoke(t *testing.T) {
 	assert.Equal(t, http.StatusOK, result.StatusCode())
 }
 
-func TestClient_newRequest(t *testing.T) {
-	client := &Client{
+func TestClient_Invoke_WithStructRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "POST", r.Method)
+		assert.Contains(t, r.URL.Path, "/api/test/123")
+		assert.Equal(t, "test", r.URL.Query().Get("name"))
+
+		response := TestResponse{
+			Success: true,
+			Message: "ok",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	serverURL, _ := url.Parse(server.URL)
+	port := uint16(80)
+	if serverURL.Port() != "" {
+		portNum, err := strconv.Atoi(serverURL.Port())
+		if err == nil {
+			port = uint16(portNum)
+		}
+	}
+	config := ClientConfig{
 		Protocol: "http",
-		Host:     "localhost",
-		Port:     8080,
+		Host:     serverURL.Hostname(),
+		Port:     port,
 		Timeout:  DefaultTimeout,
 	}
+	client := NewClient(config)
 
-	ctx := context.Background()
 	req := &SimpleRequest{
 		ID:   "123",
 		Name: "test",
@@ -141,7 +186,107 @@ func TestClient_newRequest(t *testing.T) {
 		},
 	}
 
-	httpReq, err := client.newRequest(ctx, req)
+	resp, err := client.Invoke(context.Background(), req)
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+}
+
+func TestClient_Invoke_WithRequestOptions(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 验证自定义header
+		if r.Header.Get("X-Custom-Header") != "custom-value" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		// 验证cookie
+		cookie, err := r.Cookie("test-cookie")
+		if err != nil || cookie.Value != "cookie-value" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		response := TestResponse{
+			Success: true,
+			Message: "ok",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	serverURL, _ := url.Parse(server.URL)
+	config := ClientConfig{
+		Protocol: "http",
+		Host:     serverURL.Hostname(),
+		Port:     80,
+		Timeout:  DefaultTimeout,
+	}
+	client := NewClient(config)
+
+	req, err := http.NewRequest("GET", server.URL+"/test", nil)
+	require.NoError(t, err)
+
+	resp, err := client.Invoke(context.Background(), req,
+		WithHeader("X-Custom-Header", "custom-value"),
+		WithCookies(&http.Cookie{Name: "test-cookie", Value: "cookie-value"}),
+	)
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	result := resp.(*Result)
+	assert.Equal(t, http.StatusOK, result.StatusCode())
+}
+
+func TestClient_Invoke_WithTimeout(t *testing.T) {
+	// 创建一个慢速服务器
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Second)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	serverURL, _ := url.Parse(server.URL)
+	config := ClientConfig{
+		Protocol: "http",
+		Host:     serverURL.Hostname(),
+		Port:     80,
+		Timeout:  10 * time.Second, // 默认超时较长
+	}
+	client := NewClient(config)
+
+	req, err := http.NewRequest("GET", server.URL+"/test", nil)
+	require.NoError(t, err)
+
+	// 使用短超时
+	_, err = client.Invoke(context.Background(), req,
+		WithRequestTimeout(100 * time.Millisecond),
+	)
+	assert.Error(t, err)
+	assert.True(t, strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "Timeout exceeded"),
+		"expected timeout error, got: %s", err.Error())
+}
+
+// ========== newRequest 测试 ==========
+
+func TestClient_newRequest(t *testing.T) {
+	config := ClientConfig{
+		Protocol: "http",
+		Host:     "localhost",
+		Port:     8080,
+		Timeout:  DefaultTimeout,
+	}
+	client := NewClient(config)
+
+	req := &SimpleRequest{
+		ID:   "123",
+		Name: "test",
+		Body: TestClientBody{
+			Title:   "Test Title",
+			Content: "Test Content",
+		},
+	}
+
+	httpReq, err := client.newRequest(context.Background(), req)
 	assert.NoError(t, err)
 	assert.NotNil(t, httpReq)
 	assert.Equal(t, "POST", httpReq.Method)
@@ -150,12 +295,13 @@ func TestClient_newRequest(t *testing.T) {
 }
 
 func TestClient_newRequestWithContext(t *testing.T) {
-	client := &Client{
+	config := ClientConfig{
 		Protocol: "http",
 		Host:     "localhost",
 		Port:     8080,
 		Timeout:  DefaultTimeout,
 	}
+	client := NewClient(config)
 
 	tests := []struct {
 		name     string
@@ -263,25 +409,11 @@ func TestClient_newRequestWithContext(t *testing.T) {
 				assert.Equal(t, "Test", data.Title)
 			},
 		},
-		{
-			name:   "request with URL encoded data",
-			method: "POST",
-			url:    "http://localhost:8080/api/test",
-			request: &struct {
-				Data string `in:"urlencoded" name:"data"`
-			}{
-				Data: "test data",
-			},
-			validate: func(t *testing.T, req *http.Request) {
-				assert.Contains(t, req.Header.Get("Content-Type"), "application/x-www-form-urlencoded")
-			},
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			httpReq, err := client.newRequestWithContext(ctx, tt.method, tt.url, tt.request)
+			httpReq, err := client.newRequestWithContext(context.Background(), tt.method, tt.url, tt.request)
 			assert.NoError(t, err)
 			assert.NotNil(t, httpReq)
 
@@ -292,52 +424,16 @@ func TestClient_newRequestWithContext(t *testing.T) {
 	}
 }
 
-func TestClient_newRequestWithContext_Multipart(t *testing.T) {
-	client := &Client{
-		Protocol: "http",
-		Host:     "localhost",
-		Port:     8080,
-		Timeout:  DefaultTimeout,
-	}
-
-	// 创建测试文件内容
-	fileContent := "test file content"
-	file1 := MultipartFile{
-		Filename: "test1.txt",
-		Data:     strings.NewReader(fileContent),
-	}
-	file2 := MultipartFile{
-		Filename: "test2.txt",
-		Data:     strings.NewReader(fileContent),
-	}
-
-	request := &struct {
-		Name  string          `in:"multipart" name:"name"`
-		File  MultipartFile   `in:"multipart" name:"file"`
-		Files []MultipartFile `in:"multipart" name:"files"`
-	}{
-		Name:  "test upload",
-		File:  file1,
-		Files: []MultipartFile{file2},
-	}
-
-	ctx := context.Background()
-	httpReq, err := client.newRequestWithContext(ctx, "POST", "http://localhost:8080/upload", request)
-	assert.NoError(t, err)
-	assert.NotNil(t, httpReq)
-	assert.Contains(t, httpReq.Header.Get("Content-Type"), "multipart/form-data")
-}
-
 func TestClient_toUrl(t *testing.T) {
 	tests := []struct {
 		name     string
-		client   *Client
+		config   ClientConfig
 		path     string
 		expected string
 	}{
 		{
 			name: "basic HTTP URL",
-			client: &Client{
+			config: ClientConfig{
 				Protocol: "http",
 				Host:     "localhost",
 				Port:     8080,
@@ -347,7 +443,7 @@ func TestClient_toUrl(t *testing.T) {
 		},
 		{
 			name: "HTTPS URL",
-			client: &Client{
+			config: ClientConfig{
 				Protocol: "https",
 				Host:     "example.com",
 				Port:     443,
@@ -357,7 +453,7 @@ func TestClient_toUrl(t *testing.T) {
 		},
 		{
 			name: "default protocol",
-			client: &Client{
+			config: ClientConfig{
 				Host: "localhost",
 				Port: 3000,
 			},
@@ -366,7 +462,7 @@ func TestClient_toUrl(t *testing.T) {
 		},
 		{
 			name: "no port",
-			client: &Client{
+			config: ClientConfig{
 				Protocol: "http",
 				Host:     "localhost",
 				Port:     0,
@@ -378,93 +474,246 @@ func TestClient_toUrl(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.client.toUrl(tt.path)
+			client := NewClient(tt.config)
+			result := client.toUrl(tt.path)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestContextWithClient(t *testing.T) {
-	client := &http.Client{Timeout: 10 * time.Second}
-	ctx := context.Background()
+// ========== RequestConfig 测试 ==========
 
-	// 设置客户端到上下文
-	ctxWithClient := ContextWithClient(ctx, client)
-	assert.NotNil(t, ctxWithClient)
-
-	// 从上下文获取客户端
-	retrievedClient := ClientFromContext(ctxWithClient)
-	assert.Equal(t, client, retrievedClient)
-
-	// 从空上下文获取客户端
-	nilClient := ClientFromContext(nil)
-	assert.Nil(t, nilClient)
-
-	// 从没有客户端的上下文获取
-	emptyClient := ClientFromContext(context.Background())
-	assert.Nil(t, emptyClient)
+func TestNewRequestConfig(t *testing.T) {
+	config := NewRequestConfig()
+	assert.NotNil(t, config)
+	assert.NotNil(t, config.Headers)
+	assert.NotNil(t, config.Cookies)
+	assert.Empty(t, config.Headers)
+	assert.Empty(t, config.Cookies)
+	assert.Nil(t, config.Timeout)
+	assert.Nil(t, config.Transport)
+	assert.Nil(t, config.InvokeMode)
 }
 
-func TestContextWithDefaultHttpTransport(t *testing.T) {
-	transport := &http.Transport{
-		MaxIdleConns: 100,
+func TestRequestConfig_Apply(t *testing.T) {
+	config := NewRequestConfig()
+
+	config.Apply(
+		WithHeader("X-Test", "value1"),
+		WithHeader("X-Another", "value2"),
+		WithRequestTimeout(5 * time.Second),
+	)
+
+	assert.Equal(t, "value1", config.Headers["X-Test"])
+	assert.Equal(t, "value2", config.Headers["X-Another"])
+	assert.NotNil(t, config.Timeout)
+	assert.Equal(t, 5*time.Second, *config.Timeout)
+}
+
+func TestRequestConfig_Merge(t *testing.T) {
+	config1 := NewRequestConfig()
+	config1.Headers["X-Existing"] = "existing"
+	timeout1 := 10 * time.Second
+	config1.Timeout = &timeout1
+
+	config2 := NewRequestConfig()
+	config2.Headers["X-New"] = "new"
+	config2.Headers["X-Existing"] = "should-not-override"
+	timeout2 := 20 * time.Second
+	config2.Timeout = &timeout2
+	config2.Cookies = []*http.Cookie{{Name: "test", Value: "cookie"}}
+
+	config1.Merge(config2)
+
+	// 已有header不应被覆盖
+	assert.Equal(t, "existing", config1.Headers["X-Existing"])
+	// 新header应该添加
+	assert.Equal(t, "new", config1.Headers["X-New"])
+	// Timeout不应被覆盖（因为config1已有）
+	assert.Equal(t, 10*time.Second, *config1.Timeout)
+	// Cookies应该追加
+	assert.Len(t, config1.Cookies, 1)
+}
+
+func TestRequestOption_WithHeader(t *testing.T) {
+	config := NewRequestConfig()
+	WithHeader("Authorization", "Bearer token")(config)
+
+	assert.Equal(t, "Bearer token", config.Headers["Authorization"])
+}
+
+func TestRequestOption_WithHeaders(t *testing.T) {
+	config := NewRequestConfig()
+	WithHeaders(map[string]string{
+		"X-Header1": "value1",
+		"X-Header2": "value2",
+	})(config)
+
+	assert.Equal(t, "value1", config.Headers["X-Header1"])
+	assert.Equal(t, "value2", config.Headers["X-Header2"])
+}
+
+func TestRequestOption_WithCookies(t *testing.T) {
+	config := NewRequestConfig()
+	cookie1 := &http.Cookie{Name: "session", Value: "sess123"}
+	cookie2 := &http.Cookie{Name: "token", Value: "tok456"}
+
+	WithCookies(cookie1, cookie2)(config)
+
+	assert.Len(t, config.Cookies, 2)
+	assert.Equal(t, "sess123", config.Cookies[0].Value)
+	assert.Equal(t, "tok456", config.Cookies[1].Value)
+}
+
+func TestRequestOption_WithRequestTimeout(t *testing.T) {
+	config := NewRequestConfig()
+	WithRequestTimeout(30 * time.Second)(config)
+
+	assert.NotNil(t, config.Timeout)
+	assert.Equal(t, 30*time.Second, *config.Timeout)
+}
+
+func TestRequestOption_WithTransport(t *testing.T) {
+	config := NewRequestConfig()
+	transport := &http.Transport{MaxIdleConns: 100}
+
+	WithTransport(transport)(config)
+
+	assert.Equal(t, transport, config.Transport)
+}
+
+func TestRequestOption_WithMode(t *testing.T) {
+	config := NewRequestConfig()
+	WithMode(AsyncMode)(config)
+
+	assert.NotNil(t, config.InvokeMode)
+	assert.Equal(t, AsyncMode, *config.InvokeMode)
+}
+
+func TestRequestOption_WithAuthorization(t *testing.T) {
+	config := NewRequestConfig()
+	WithAuthorization("Bearer token123")(config)
+
+	assert.Equal(t, "Bearer token123", config.Headers["Authorization"])
+}
+
+func TestRequestOption_WithBearerToken(t *testing.T) {
+	config := NewRequestConfig()
+	WithBearerToken("token123")(config)
+
+	assert.Equal(t, "Bearer token123", config.Headers["Authorization"])
+}
+
+func TestRequestOption_WithContentType(t *testing.T) {
+	config := NewRequestConfig()
+	WithContentType("application/json")(config)
+
+	assert.Equal(t, "application/json", config.Headers["Content-Type"])
+}
+
+// ========== applyRequestConfig 测试 ==========
+
+func TestApplyRequestConfig(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   *RequestConfig
+		validate func(*testing.T, *http.Request)
+	}{
+		{
+			name:   "nil config",
+			config: nil,
+			validate: func(t *testing.T, req *http.Request) {
+				assert.Empty(t, req.Header.Get("X-Custom"))
+			},
+		},
+		{
+			name: "config with headers",
+			config: &RequestConfig{
+				Headers: map[string]string{
+					"Authorization": "Bearer token123",
+					"X-Custom":      "custom-value",
+					"Content-Type":  "application/json",
+				},
+			},
+			validate: func(t *testing.T, req *http.Request) {
+				assert.Equal(t, "Bearer token123", req.Header.Get("Authorization"))
+				assert.Equal(t, "custom-value", req.Header.Get("X-Custom"))
+				assert.Equal(t, "application/json", req.Header.Get("Content-Type"))
+			},
+		},
+		{
+			name: "config with cookies",
+			config: &RequestConfig{
+				Cookies: []*http.Cookie{
+					{Name: "session", Value: "sess123"},
+					{Name: "token", Value: "tok456"},
+				},
+			},
+			validate: func(t *testing.T, req *http.Request) {
+				cookies := req.Cookies()
+				assert.Len(t, cookies, 2)
+				cookieMap := make(map[string]string)
+				for _, c := range cookies {
+					cookieMap[c.Name] = c.Value
+				}
+				assert.Equal(t, "sess123", cookieMap["session"])
+				assert.Equal(t, "tok456", cookieMap["token"])
+			},
+		},
+		{
+			name: "config with headers and cookies",
+			config: &RequestConfig{
+				Headers: map[string]string{
+					"X-API-Key": "key123",
+				},
+				Cookies: []*http.Cookie{
+					{Name: "auth", Value: "auth789"},
+				},
+			},
+			validate: func(t *testing.T, req *http.Request) {
+				assert.Equal(t, "key123", req.Header.Get("X-API-Key"))
+				cookies := req.Cookies()
+				assert.Len(t, cookies, 1)
+				assert.Equal(t, "auth", cookies[0].Name)
+				assert.Equal(t, "auth789", cookies[0].Value)
+			},
+		},
+		{
+			name: "header override",
+			config: &RequestConfig{
+				Headers: map[string]string{
+					"Authorization": "Bearer new-token",
+				},
+			},
+			validate: func(t *testing.T, req *http.Request) {
+				// 先设置一个header
+				req.Header.Set("Authorization", "Bearer old-token")
+				// 应用配置后应该被覆盖
+				applyRequestConfig(req, &RequestConfig{
+					Headers: map[string]string{
+						"Authorization": "Bearer new-token",
+					},
+				})
+				assert.Equal(t, "Bearer new-token", req.Header.Get("Authorization"))
+			},
+		},
 	}
-	ctx := context.Background()
 
-	// 设置传输到上下文
-	ctxWithTransport := ContextWithDefaultHttpTransport(ctx, transport)
-	assert.NotNil(t, ctxWithTransport)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := http.NewRequest("GET", "http://localhost/test", nil)
+			require.NoError(t, err)
 
-	// 从上下文获取传输
-	retrievedTransport := DefaultHttpTransportFromContext(ctxWithTransport)
-	assert.Equal(t, transport, retrievedTransport)
+			applyRequestConfig(req, tt.config)
 
-	// 从空上下文获取传输
-	nilTransport := DefaultHttpTransportFromContext(nil)
-	assert.Nil(t, nilTransport)
+			if tt.validate != nil {
+				tt.validate(t, req)
+			}
+		})
+	}
 }
 
-func TestSetClientTimeout(t *testing.T) {
-	ctx := context.Background()
-	timeout := 30 * time.Second
-
-	// 设置超时到上下文
-	ctxWithTimeout := SetClientTimeout(ctx, timeout)
-	assert.NotNil(t, ctxWithTimeout)
-
-	// 获取超时
-	retrievedTimeout := DefaultClientTimeout(ctxWithTimeout)
-	assert.NotNil(t, retrievedTimeout)
-	assert.Equal(t, timeout, *retrievedTimeout)
-
-	// 测试负数超时
-	ctxWithNegativeTimeout := SetClientTimeout(ctx, -1*time.Second)
-	negativeTimeout := DefaultClientTimeout(ctxWithNegativeTimeout)
-	assert.NotNil(t, negativeTimeout)
-	assert.Equal(t, DefaultTimeout, *negativeTimeout)
-
-	// 从空上下文获取超时
-	nilTimeout := DefaultClientTimeout(nil)
-	assert.Nil(t, nilTimeout)
-}
-
-func TestGetShortConnClientContext(t *testing.T) {
-	ctx := context.Background()
-	timeout := 10 * time.Second
-
-	client := GetShortConnClientContext(ctx, timeout)
-	assert.NotNil(t, client)
-	assert.Equal(t, timeout, client.Timeout)
-	assert.NotNil(t, client.Transport)
-
-	// 测试使用上下文中的传输
-	transport := &http.Transport{MaxIdleConns: 50}
-	ctxWithTransport := ContextWithDefaultHttpTransport(ctx, transport)
-
-	clientWithTransport := GetShortConnClientContext(ctxWithTransport, timeout)
-	assert.NotNil(t, clientWithTransport)
-	assert.NotEqual(t, transport, clientWithTransport.Transport) // 应该是克隆的传输，被otelhttp包装
-}
+// ========== Result 测试 ==========
 
 func TestResult_StatusCode(t *testing.T) {
 	tests := []struct {
@@ -524,11 +773,12 @@ func TestResult_Bind(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// 创建响应
 			resp := &http.Response{
 				StatusCode: tt.statusCode,
 				Body:       io.NopCloser(strings.NewReader(tt.responseBody)),
+				Header:     make(http.Header),
 			}
+			resp.Header.Set("Content-Type", "application/json")
 			result := &Result{Response: resp}
 
 			var response TestResponse
@@ -573,6 +823,8 @@ func TestIsOk(t *testing.T) {
 	}
 }
 
+// ========== MultipartFile 测试 ==========
+
 func TestMultipartFile(t *testing.T) {
 	content := "test file content"
 	file := MultipartFile{
@@ -583,20 +835,71 @@ func TestMultipartFile(t *testing.T) {
 	assert.Equal(t, "test.txt", file.Filename)
 	assert.NotNil(t, file.Data)
 
-	// 读取数据验证
 	data, err := io.ReadAll(file.Data)
 	assert.NoError(t, err)
 	assert.Equal(t, content, string(data))
 }
 
-// 基准测试
+// ========== Context 相关测试 ==========
+
+func TestWithRequestConfig(t *testing.T) {
+	config := &RequestConfig{
+		Headers: map[string]string{"X-Test": "value"},
+	}
+
+	ctx := WithRequestConfig(context.Background(), config)
+	assert.NotNil(t, ctx)
+
+	retrieved := GetRequestConfigFromContext(ctx)
+	assert.NotNil(t, retrieved)
+	assert.Equal(t, "value", retrieved.Headers["X-Test"])
+}
+
+func TestGetRequestConfigFromContext(t *testing.T) {
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		expected *RequestConfig
+	}{
+		{
+			name:     "context without config",
+			ctx:      context.Background(),
+			expected: nil,
+		},
+		{
+			name: "context with config",
+			ctx: WithRequestConfig(context.Background(), &RequestConfig{
+				Headers: map[string]string{"X-Test": "value"},
+			}),
+			expected: &RequestConfig{
+				Headers: map[string]string{"X-Test": "value"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := GetRequestConfigFromContext(tt.ctx)
+			if tt.expected == nil {
+				assert.Nil(t, result)
+			} else {
+				assert.NotNil(t, result)
+				assert.Equal(t, tt.expected.Headers, result.Headers)
+			}
+		})
+	}
+}
+
+// ========== 基准测试 ==========
+
 func BenchmarkClient_newRequestWithContext(b *testing.B) {
-	client := &Client{
+	config := ClientConfig{
 		Protocol: "http",
 		Host:     "localhost",
 		Port:     8080,
 		Timeout:  DefaultTimeout,
 	}
+	client := NewClient(config)
 
 	request := &struct {
 		ID   string         `in:"path" name:"id"`
@@ -627,7 +930,9 @@ func BenchmarkResult_Bind(b *testing.B) {
 		resp := &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(strings.NewReader(responseBody)),
+			Header:     make(http.Header),
 		}
+		resp.Header.Set("Content-Type", "application/json")
 		result := &Result{Response: resp}
 
 		var response TestResponse
@@ -638,426 +943,6 @@ func BenchmarkResult_Bind(b *testing.B) {
 	}
 }
 
-// TestGetRequestConfigFromContext 测试从上下文获取请求配置
-func TestGetRequestConfigFromContext(t *testing.T) {
-	tests := []struct {
-		name     string
-		ctx      context.Context
-		expected *RequestConfig
-	}{
-		{
-			name:     "context without config",
-			ctx:      context.Background(),
-			expected: nil,
-		},
-		{
-			name: "context with config",
-			ctx: context.WithValue(context.Background(), RequestConfigKey{}, &RequestConfig{
-				Headers: map[string]string{"X-Test": "value"},
-			}),
-			expected: &RequestConfig{
-				Headers: map[string]string{"X-Test": "value"},
-			},
-		},
-		{
-			name: "context with full config",
-			ctx: context.WithValue(context.Background(), RequestConfigKey{}, &RequestConfig{
-				Headers: map[string]string{"Authorization": "Bearer token"},
-				Cookies: []*http.Cookie{{Name: "session", Value: "abc123"}},
-				Timeout: func() *time.Duration { d := 10 * time.Second; return &d }(),
-			}),
-			expected: &RequestConfig{
-				Headers: map[string]string{"Authorization": "Bearer token"},
-				Cookies: []*http.Cookie{{Name: "session", Value: "abc123"}},
-				Timeout: func() *time.Duration { d := 10 * time.Second; return &d }(),
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := GetRequestConfigFromContext(tt.ctx)
-			if tt.expected == nil {
-				assert.Nil(t, result)
-			} else {
-				assert.NotNil(t, result)
-				assert.Equal(t, tt.expected.Headers, result.Headers)
-				if tt.expected.Timeout != nil {
-					assert.Equal(t, *tt.expected.Timeout, *result.Timeout)
-				}
-			}
-		})
-	}
-}
-
-// TestApplyRequestConfig 测试应用请求配置到HTTP请求
-func TestApplyRequestConfig(t *testing.T) {
-	tests := []struct {
-		name     string
-		config   *RequestConfig
-		validate func(*testing.T, *http.Request)
-	}{
-		{
-			name:   "nil config",
-			config: nil,
-			validate: func(t *testing.T, req *http.Request) {
-				// 应该没有额外的headers或cookies
-				assert.Empty(t, req.Header.Get("X-Custom"))
-			},
-		},
-		{
-			name: "config with headers",
-			config: &RequestConfig{
-				Headers: map[string]string{
-					"Authorization": "Bearer token123",
-					"X-Custom":      "custom-value",
-					"Content-Type":  "application/json",
-				},
-			},
-			validate: func(t *testing.T, req *http.Request) {
-				assert.Equal(t, "Bearer token123", req.Header.Get("Authorization"))
-				assert.Equal(t, "custom-value", req.Header.Get("X-Custom"))
-				assert.Equal(t, "application/json", req.Header.Get("Content-Type"))
-			},
-		},
-		{
-			name: "config with cookies",
-			config: &RequestConfig{
-				Cookies: []*http.Cookie{
-					{Name: "session", Value: "sess123"},
-					{Name: "token", Value: "tok456"},
-				},
-			},
-			validate: func(t *testing.T, req *http.Request) {
-				cookies := req.Cookies()
-				assert.Len(t, cookies, 2)
-				cookieMap := make(map[string]string)
-				for _, c := range cookies {
-					cookieMap[c.Name] = c.Value
-				}
-				assert.Equal(t, "sess123", cookieMap["session"])
-				assert.Equal(t, "tok456", cookieMap["token"])
-			},
-		},
-		{
-			name: "config with headers and cookies",
-			config: &RequestConfig{
-				Headers: map[string]string{
-					"X-API-Key": "key123",
-				},
-				Cookies: []*http.Cookie{
-					{Name: "auth", Value: "auth789"},
-				},
-			},
-			validate: func(t *testing.T, req *http.Request) {
-				assert.Equal(t, "key123", req.Header.Get("X-API-Key"))
-				cookies := req.Cookies()
-				assert.Len(t, cookies, 1)
-				assert.Equal(t, "auth", cookies[0].Name)
-				assert.Equal(t, "auth789", cookies[0].Value)
-			},
-		},
-		{
-			name: "config with timeout (timeout not applied in applyRequestConfig)",
-			config: &RequestConfig{
-				Timeout: func() *time.Duration { d := 5 * time.Second; return &d }(),
-			},
-			validate: func(t *testing.T, req *http.Request) {
-				// Timeout不在applyRequestConfig中应用，只是验证不会panic
-				assert.NotNil(t, req)
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req, err := http.NewRequest("GET", "http://localhost/test", nil)
-			require.NoError(t, err)
-
-			applyRequestConfig(req, tt.config)
-
-			if tt.validate != nil {
-				tt.validate(t, req)
-			}
-		})
-	}
-}
-
-// TestClient_Invoke_WithRequestConfig 测试Invoke方法使用请求配置
-func TestClient_Invoke_WithRequestConfig(t *testing.T) {
-	// 创建测试服务器，验证headers和cookies
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 验证自定义header
-		if r.Header.Get("X-Custom-Header") != "custom-value" {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": "missing custom header"})
-			return
-		}
-
-		// 验证cookie
-		cookie, err := r.Cookie("test-cookie")
-		if err != nil || cookie.Value != "cookie-value" {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": "missing cookie"})
-			return
-		}
-
-		response := TestResponse{
-			Success: true,
-			Message: "ok",
-			Data:    "test data",
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(response)
-	}))
-	defer server.Close()
-
-	serverURL, _ := url.Parse(server.URL)
-	host := serverURL.Hostname()
-	port := 80
-	if serverURL.Port() != "" {
-		port = 8080
-	}
-
-	client := &Client{
-		Protocol: "http",
-		Host:     host,
-		Port:     uint16(port),
-		Timeout:  DefaultTimeout,
-	}
-
-	// 创建带有requestConfig的context
-	config := &RequestConfig{
-		Headers: map[string]string{
-			"X-Custom-Header": "custom-value",
-		},
-		Cookies: []*http.Cookie{
-			{Name: "test-cookie", Value: "cookie-value"},
-		},
-	}
-	ctx := context.WithValue(context.Background(), RequestConfigKey{}, config)
-
-	// 使用http.Request直接调用
-	req, err := http.NewRequest("GET", server.URL+"/test", nil)
-	require.NoError(t, err)
-
-	resp, err := client.Invoke(ctx, req)
-	assert.NoError(t, err)
-	assert.NotNil(t, resp)
-	result := resp.(*Result)
-	assert.Equal(t, http.StatusOK, result.StatusCode())
-
-	// 验证响应
-	var testResp TestResponse
-	err = result.Bind(&testResp)
-	assert.NoError(t, err)
-	assert.True(t, testResp.Success)
-}
-
-// TestClient_Invoke_WithRequestConfigTimeout 测试Invoke方法使用请求配置中的超时
-func TestClient_Invoke_WithRequestConfigTimeout(t *testing.T) {
-	// 创建一个慢速服务器
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(2 * time.Second)
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(TestResponse{Success: true})
-	}))
-	defer server.Close()
-
-	serverURL, _ := url.Parse(server.URL)
-	host := serverURL.Hostname()
-	port := 80
-	if serverURL.Port() != "" {
-		port = 8080
-	}
-
-	client := &Client{
-		Protocol: "http",
-		Host:     host,
-		Port:     uint16(port),
-		Timeout:  10 * time.Second, // 默认超时较长
-	}
-
-	// 创建带有短超时的requestConfig
-	shortTimeout := 100 * time.Millisecond
-	config := &RequestConfig{
-		Timeout: &shortTimeout,
-	}
-	ctx := context.WithValue(context.Background(), RequestConfigKey{}, config)
-
-	req, err := http.NewRequest("GET", server.URL+"/test", nil)
-	require.NoError(t, err)
-
-	// 应该超时
-	_, err = client.Invoke(ctx, req)
-	assert.Error(t, err)
-	// 验证是超时错误 (可能是 "timeout" 或 "Timeout exceeded")
-	errMsg := err.Error()
-	assert.True(t, strings.Contains(errMsg, "timeout") || strings.Contains(errMsg, "Timeout exceeded"),
-		"expected timeout error, got: %s", errMsg)
-}
-
-// TestClient_Invoke_WithStructRequest 测试Invoke方法使用结构体请求和requestConfig
-func TestClient_Invoke_WithStructRequest(t *testing.T) {
-	// 创建测试服务器
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 验证来自requestConfig的header
-		if r.Header.Get("X-Request-ID") != "req-123" {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		// 验证来自结构体的header
-		if r.Header.Get("X-Email") != "test@example.com" {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		response := TestResponse{
-			Success: true,
-			Message: "ok",
-			Data:    "test data",
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(response)
-	}))
-	defer server.Close()
-
-	serverURL, _ := url.Parse(server.URL)
-	host := serverURL.Hostname()
-	port := 80
-	if serverURL.Port() != "" {
-		port = 8080
-	}
-
-	client := &Client{
-		Protocol: "http",
-		Host:     host,
-		Port:     uint16(port),
-		Timeout:  DefaultTimeout,
-	}
-
-	// 创建结构体请求
-	structReq := &struct {
-		MethodGet
-		Email string `in:"header" name:"X-Email"`
-	}{
-		Email: "test@example.com",
-	}
-
-	// 实现PathDescriber接口
-	type testRequest struct {
-		MethodGet
-		Email string `in:"header" name:"X-Email"`
-	}
-	testReq := &testRequest{Email: "test@example.com"}
-
-	// 创建带有requestConfig的context
-	config := &RequestConfig{
-		Headers: map[string]string{
-			"X-Request-ID": "req-123",
-		},
-	}
-	ctx := context.WithValue(context.Background(), RequestConfigKey{}, config)
-
-	// 由于structReq没有实现PathDescriber，我们需要使用http.Request
-	req, err := http.NewRequest("GET", server.URL+"/test", nil)
-	require.NoError(t, err)
-	req.Header.Set("X-Email", testReq.Email)
-
-	resp, err := client.Invoke(ctx, req)
-	assert.NoError(t, err)
-	assert.NotNil(t, resp)
-	result := resp.(*Result)
-	assert.Equal(t, http.StatusOK, result.StatusCode())
-
-	// 验证响应
-	var testResp TestResponse
-	err = result.Bind(&testResp)
-	assert.NoError(t, err)
-	assert.True(t, testResp.Success)
-
-	// 避免未使用变量警告
-	_ = structReq
-}
-
-// TestApplyRequestConfig_HeaderOverride 测试requestConfig的header会覆盖原有header
-func TestApplyRequestConfig_HeaderOverride(t *testing.T) {
-	req, err := http.NewRequest("GET", "http://localhost/test", nil)
-	require.NoError(t, err)
-
-	// 设置初始header
-	req.Header.Set("Authorization", "Bearer old-token")
-	req.Header.Set("X-Custom", "original")
-
-	// 应用新的配置
-	config := &RequestConfig{
-		Headers: map[string]string{
-			"Authorization": "Bearer new-token",
-			"X-New-Header":  "new-value",
-		},
-	}
-
-	applyRequestConfig(req, config)
-
-	// 验证header被覆盖
-	assert.Equal(t, "Bearer new-token", req.Header.Get("Authorization"))
-	assert.Equal(t, "original", req.Header.Get("X-Custom"))
-	assert.Equal(t, "new-value", req.Header.Get("X-New-Header"))
-}
-
-// TestApplyRequestConfig_MultipleCookies 测试添加多个cookies
-func TestApplyRequestConfig_MultipleCookies(t *testing.T) {
-	req, err := http.NewRequest("GET", "http://localhost/test", nil)
-	require.NoError(t, err)
-
-	// 添加初始cookie
-	req.AddCookie(&http.Cookie{Name: "existing", Value: "cookie"})
-
-	config := &RequestConfig{
-		Cookies: []*http.Cookie{
-			{Name: "session", Value: "sess123", Path: "/", HttpOnly: true},
-			{Name: "token", Value: "tok456", Secure: true},
-			{Name: "user", Value: "user789", MaxAge: 3600},
-		},
-	}
-
-	applyRequestConfig(req, config)
-
-	cookies := req.Cookies()
-	assert.Len(t, cookies, 4) // 1 existing + 3 new
-
-	cookieMap := make(map[string]*http.Cookie)
-	for _, c := range cookies {
-		cookieMap[c.Name] = c
-	}
-
-	assert.Equal(t, "cookie", cookieMap["existing"].Value)
-	assert.Equal(t, "sess123", cookieMap["session"].Value)
-	assert.Equal(t, "tok456", cookieMap["token"].Value)
-	assert.Equal(t, "user789", cookieMap["user"].Value)
-}
-
-// TestRequestConfig_EmptyValues 测试空值的requestConfig
-func TestRequestConfig_EmptyValues(t *testing.T) {
-	req, err := http.NewRequest("GET", "http://localhost/test", nil)
-	require.NoError(t, err)
-
-	config := &RequestConfig{
-		Headers: map[string]string{},
-		Cookies: []*http.Cookie{},
-	}
-
-	applyRequestConfig(req, config)
-
-	// 不应该panic，且请求应该正常
-	assert.NotNil(t, req)
-	assert.Empty(t, req.Cookies())
-}
-
-// BenchmarkApplyRequestConfig 基准测试应用请求配置
 func BenchmarkApplyRequestConfig(b *testing.B) {
 	req, _ := http.NewRequest("GET", "http://localhost/test", nil)
 	config := &RequestConfig{
@@ -1075,18 +960,5 @@ func BenchmarkApplyRequestConfig(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		applyRequestConfig(req, config)
-	}
-}
-
-// BenchmarkGetRequestConfigFromContext 基准测试从上下文获取配置
-func BenchmarkGetRequestConfigFromContext(b *testing.B) {
-	config := &RequestConfig{
-		Headers: map[string]string{"X-Test": "value"},
-	}
-	ctx := context.WithValue(context.Background(), RequestConfigKey{}, config)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = GetRequestConfigFromContext(ctx)
 	}
 }

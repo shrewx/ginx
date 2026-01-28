@@ -57,12 +57,13 @@ func TestParameterBindingWithInjection(t *testing.T) {
 	headerParams := params["header"].(map[string]interface{})
 	formParams := params["form"].(map[string]interface{})
 	cookieParams := params["cookies"].(map[string]interface{})
+	encodedParams := params["urlencoded"].(map[string]interface{})
 
 	require.Equal(t, 42, pathParams["id"])
 	require.Equal(t, "neo", queryParams["name"])
 	require.Equal(t, "token123", headerParams["X-Token"])
 	require.Equal(t, "foo", formParams["formVal"])
-	require.Equal(t, "bar", formParams["encodedVal"])
+	require.Equal(t, "bar", encodedParams["encodedVal"])
 	require.Equal(t, "cookie-value", cookieParams["session"])
 }
 

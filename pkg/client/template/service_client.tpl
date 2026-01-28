@@ -2,26 +2,22 @@
 
 import (
 	"context"
-	"time"
 
 	"github.com/shrewx/ginx"
 )
 
 // {{ .ClientInterfaceName }} 客户端接口
 type {{ .ClientInterfaceName }} interface {
-	WithContext(ctx context.Context) {{ .ClientInterfaceName }}
-	WithTimeout(ctx context.Context, timeout time.Duration) {{ .ClientInterfaceName }}
-	Context() context.Context
-{{range .Operations}}
-	{{ .OperationId }}({{if .HasReq}}req *{{ .ReqType }}, {{end}}opts ...ginx.RequestOption){{if .HasResp}} (*{{ .RespType }}, error){{else}} error{{end}}{{end}}
+{{range .Operations}}//{{if .Summary}} {{ .Summary }}{{end}}
+	{{ .OperationId }}(ctx context.Context, {{if .HasReq}}req *{{ .ReqType }}, {{end}}opts ...ginx.RequestOption){{if .HasResp}} (*{{ .RespType }}, error){{else}} error{{end}}
+	{{end}}
 }
 
 // {{ .ClientInstanceName }} 客户端实现
 type {{ .ClientInstanceName }} struct {
 	Client          ginx.Client
 	ctx             context.Context
-	interceptors    []ginx.Interceptor
-	defaultReqConfig *ginx.RequestConfig
+	config *ginx.RequestConfig
 	syncInvoker     ginx.SyncInvoker
 	asyncInvoker    ginx.AsyncInvoker
 	defaultMode     ginx.InvokeMode
@@ -31,9 +27,7 @@ type {{ .ClientInstanceName }} struct {
 func New{{ .ClientInterfaceName }}(c ginx.Client, opts ...ClientOption) *{{ .ClientInstanceName }} {
 	client := &{{ .ClientInstanceName }}{
 		Client:          c,
-		interceptors:    make([]ginx.Interceptor, 0),
-		defaultReqConfig: ginx.NewRequestConfig(),
-		defaultMode:     ginx.SyncMode,
+		config: ginx.NewRequestConfig(),
 	}
 
 	// 应用客户端选项
@@ -44,64 +38,23 @@ func New{{ .ClientInterfaceName }}(c ginx.Client, opts ...ClientOption) *{{ .Cli
 	return client
 }
 
-// WithContext 设置上下文
-func (c *{{ .ClientInstanceName }}) WithContext(ctx context.Context) {{ .ClientInterfaceName }} {
-	cc := new({{ .ClientInstanceName }})
-	cc.Client = c.Client
-	cc.ctx = ctx
-	cc.interceptors = c.interceptors
-	cc.defaultReqConfig = c.defaultReqConfig
-	return cc
-}
-
-// WithTimeout 设置超时上下文
-func (c *{{ .ClientInstanceName }}) WithTimeout(ctx context.Context, timeout time.Duration) {{ .ClientInterfaceName }} {
-	cc := new({{ .ClientInstanceName }})
-	cc.Client = c.Client
-	cc.ctx = ginx.SetClientTimeout(ctx, timeout)
-	cc.interceptors = c.interceptors
-	cc.defaultReqConfig = c.defaultReqConfig
-	return cc
-}
-
-// Context 获取上下文
-func (c *{{ .ClientInstanceName }}) Context() context.Context {
-	if c.ctx != nil {
-		return c.ctx
-	}
-	return context.Background()
-}
-
 {{range .Operations}}
 //{{if .Summary}} {{ .Summary }}{{end}}
-func (c *{{ $.ClientInstanceName }}) {{ .OperationId }}({{if .HasReq}}req *{{ .ReqType }}, {{end}}opts ...ginx.RequestOption) {{if .HasResp}}(*{{ .RespType }}, error){{else}}error{{end}} {
-	config := c.buildRequestConfig(opts...)
+func (c *{{ $.ClientInstanceName }}) {{ .OperationId }}(ctx context.Context, {{if .HasReq}}req *{{ .ReqType }}, {{end}}opts ...ginx.RequestOption) {{if .HasResp}}(*{{ .RespType }}, error){{else}}error{{end}} {
 {{if not .HasReq}}
 	req := &{{ .ReqType }}{}
 {{end}}
 {{if .HasResp}}
 	resp := new({{ .RespType }})
-	if err := ginx.InvokeWithMode(c.Context(), req, resp, config, c.getSyncInvoker(), c.asyncInvoker); err != nil {
+	if err := ginx.Invoke(&c.Client, ctx, req, resp, c.config, c.asyncInvoker, opts...); err != nil {
 		return nil, err
 	}
 	return resp, nil
 {{else}}
-	syncInvoker := c.getSyncInvoker()
-	asyncInvoker := c.getAsyncInvoker()
-	return ginx.InvokeWithMode(c.Context(), req, nil, config, syncInvoker, asyncInvoker)
+	return ginx.Invoke(&c.Client, ctx, req, nil, c.config, c.asyncInvoker, opts...)
 {{end}}
 }
 {{end}}
-
-// buildRequestConfig 构建最终的请求配置（合并默认配置和请求级配置）
-func (c *{{ .ClientInstanceName }}) buildRequestConfig(opts ...ginx.RequestOption) *ginx.RequestConfig {
-	config := ginx.NewRequestConfig()
-	// 先应用默认配置
-	config.Merge(c.defaultReqConfig)
-	// 再应用请求级配置（会覆盖默认配置）
-	config.Apply(opts...)
-	return config
-}
 
 // getSyncInvoker 获取同步调用器
 func (c *{{ .ClientInstanceName }}) getSyncInvoker() ginx.SyncInvoker {
@@ -111,4 +64,3 @@ func (c *{{ .ClientInstanceName }}) getSyncInvoker() ginx.SyncInvoker {
 	client := &c.Client
 	return client
 }
-
