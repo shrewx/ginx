@@ -98,6 +98,7 @@ type GroupOperator interface {
 type EmptyOperator struct{}
 
 func (e *EmptyOperator) Output(ctx *gin.Context) (interface{}, error) { return nil, nil }
+func (e *EmptyOperator) Validate(ctx *gin.Context) error              { return nil }
 
 type EmptyMiddlewareOperator struct{}
 

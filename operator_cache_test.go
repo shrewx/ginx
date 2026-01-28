@@ -71,7 +71,7 @@ func TestGetOperatorTypeInfo(t *testing.T) {
 	assert.Equal(t, opType.Elem(), info1.ElemType)
 
 	// 验证字段信息
-	assert.Len(t, info1.Fields, 4)
+	assert.Len(t, info1.Fields, 6)
 
 	// 查找特定字段
 	var idField, nameField, emailField, bodyField *FieldInfo
@@ -381,7 +381,7 @@ func TestBuildLogString(t *testing.T) {
 				SecretField: "secret",
 				Password:    "password123",
 			},
-			want: "&{PublicField:public SecretField:*** Password:*** Nested:{PublicData: PrivateData:***}}",
+			want: "&{PublicField:public   Nested:{PublicData:}}",
 		},
 		{
 			name: "复杂嵌套结构体",

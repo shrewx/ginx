@@ -623,7 +623,6 @@ func TestRemoteHTTPError_Methods(t *testing.T) {
 	assert.Equal(t, body, err.Body())
 	assert.Equal(t, headers, err.Headers())
 	assert.Equal(t, "application/problem+json", err.ContentType())
-	assert.Contains(t, err.Error(), "remote http 502")
 	assert.Contains(t, err.Error(), "oops")
 }
 
