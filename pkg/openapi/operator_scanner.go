@@ -557,7 +557,8 @@ func (scanner *OperatorScanner) scanParameterOrRequestBody(ctx context.Context, 
 		location, _ := tagValueAndFlagsByTagString(field.Tag().Get("in"))
 
 		if location == "" {
-			panic(errors.Errorf("missing tag `in` for %s of %s", field.Name(), op.ID))
+			logrus.Warnf("missing tag `in` for %s of %s", field.Name(), op.ID)
+			return true
 		}
 
 		if location == "urlencoded" || location == "form" {

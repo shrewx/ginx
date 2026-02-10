@@ -28,11 +28,11 @@ func WithAsyncInvokeMode() RequestOption {
 // Invoke 统一的调用入口，根据调用模式选择同步或异步，并处理配置与响应绑定
 // resp 为 nil 时表示调用方不关心响应体（例如纯异步或无返回体的接口）
 func Invoke(
-	client *Client,
 	ctx context.Context,
 	req interface{},
 	resp interface{},
 	defaultReqConfig *RequestConfig,
+	syncInvoker SyncInvoker,
 	asyncInvoker AsyncInvoker,
 	opts ...RequestOption,
 ) error {
@@ -47,11 +47,10 @@ func Invoke(
 
 	// 异步模式且存在异步 invoker
 	if mode == AsyncMode && asyncInvoker != nil {
-		return asyncInvoker.InvokeAsync(ctx, req, opts...)
+		return asyncInvoker.InvokeAsync(ctx, req, *requestConfig)
 	}
 
-	// 同步模式
-	response, err := client.Invoke(ctx, req, opts...)
+	response, err := syncInvoker.Invoke(ctx, req, *requestConfig)
 	if err != nil {
 		return err
 	}
@@ -61,4 +60,11 @@ func Invoke(
 	}
 
 	return response.Bind(resp)
+}
+
+// buildRequestConfig 构建请求配置
+func buildRequestConfig(opts ...RequestOption) *RequestConfig {
+	config := NewRequestConfig()
+	config.Apply(opts...)
+	return config
 }

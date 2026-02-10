@@ -1,18 +1,12 @@
 package ginx
 
 import (
-	"context"
 	"net"
 	"net/http"
 	"time"
 
 	"golang.org/x/net/http2"
 )
-
-// contextKey 统一的 context key 类型
-type contextKey string
-
-// ========== ClientConfig (客户端配置) ==========
 
 // ClientConfig 客户端连接配置
 // 用于配置底层 HTTP 连接，长期有效
@@ -38,6 +32,10 @@ func NewClientConfig(host string) ClientConfig {
 // RequestConfig 请求配置
 // 单次请求的配置，可以覆盖和添加 ClientConfig 中的配置
 type RequestConfig struct {
+	Schema     string
+	Host       string
+	Port       uint16
+	Path       string
 	Headers    map[string]string
 	Cookies    []*http.Cookie
 	Timeout    *time.Duration  // 覆盖 ClientConfig.Timeout
@@ -52,27 +50,6 @@ func NewRequestConfig() *RequestConfig {
 		Cookies:    make([]*http.Cookie, 0),
 		InvokeMode: nil,
 	}
-}
-
-// WithRequestConfig 将 RequestConfig 注入到 Context（用于 InvokeWithMode）
-func WithRequestConfig(ctx context.Context, config *RequestConfig) context.Context {
-	if config == nil {
-		return ctx
-	}
-	const requestConfigKey contextKey = "ginx.request_config"
-	return context.WithValue(ctx, requestConfigKey, config)
-}
-
-// GetRequestConfigFromContext 从 Context 获取 RequestConfig
-func GetRequestConfigFromContext(ctx context.Context) *RequestConfig {
-	if ctx == nil {
-		return nil
-	}
-	const requestConfigKey contextKey = "ginx.request_config"
-	if config, ok := ctx.Value(requestConfigKey).(*RequestConfig); ok {
-		return config
-	}
-	return nil
 }
 
 // RequestOption 用于配置单个请求的选项
@@ -114,6 +91,21 @@ func (rc *RequestConfig) Merge(other *RequestConfig) {
 	// InvokeMode: 如果请求级未设置，使用默认值
 	if rc.InvokeMode == nil && other.InvokeMode != nil {
 		rc.InvokeMode = other.InvokeMode
+	}
+	if rc.Schema == "" && other.Schema != "" {
+		rc.Schema = other.Schema
+	}
+
+	if rc.Host == "" && other.Host != "" {
+		rc.Host = other.Host
+	}
+
+	if rc.Port == 0 && other.Port != 0 {
+		rc.Port = other.Port
+	}
+
+	if rc.Path == "" && other.Path != "" {
+		rc.Path = other.Path
 	}
 }
 
@@ -176,14 +168,8 @@ func WithTransport(transport *http.Transport) RequestOption {
 	}
 }
 
-// ========== 配置合并和应用 ==========
-
-// applyRequestConfig 将 RequestConfig 应用到 HTTP 请求
-func applyRequestConfig(req *http.Request, config *RequestConfig) {
-	if config == nil {
-		return
-	}
-
+// ApplyRequestConfig 将 RequestConfig 应用到 HTTP 请求
+func applyRequestConfig(req *http.Request, config RequestConfig) {
 	// 应用 Headers
 	for k, v := range config.Headers {
 		req.Header.Set(k, v)
@@ -197,19 +183,20 @@ func applyRequestConfig(req *http.Request, config *RequestConfig) {
 
 // getTimeout 获取最终的超时时间
 // 优先级：RequestConfig.Timeout > ClientConfig.Timeout > DefaultTimeout
-func getTimeout(clientConfig *ClientConfig, requestConfig *RequestConfig, ctx context.Context) time.Duration {
+func getTimeout(clientConfig *ClientConfig, requestConfig *RequestConfig) *time.Duration {
 	// 1. 请求配置中的 Timeout（最高优先级）
 	if requestConfig != nil && requestConfig.Timeout != nil {
-		return *requestConfig.Timeout
+		return requestConfig.Timeout
 	}
 
 	// 2. ClientConfig 中的 Timeout
 	if clientConfig != nil && clientConfig.Timeout > 0 {
-		return clientConfig.Timeout
+		return &clientConfig.Timeout
 	}
 
 	// 3. 默认超时
-	return DefaultTimeout
+	t := DefaultTimeout
+	return &t
 }
 
 // getTransport 获取最终的 Transport
@@ -229,11 +216,8 @@ func getTransport(clientConfig *ClientConfig, requestConfig *RequestConfig) *htt
 	return nil
 }
 
-// getHTTPClient 获取或创建 HTTP Client
-func getHTTPClient(clientConfig *ClientConfig, requestConfig *RequestConfig, ctx context.Context) *http.Client {
-	timeout := getTimeout(clientConfig, requestConfig, ctx)
-	transport := getTransport(clientConfig, requestConfig)
-
+// GetHTTPClient 获取或创建 HTTP Client
+func getHTTPClient(timeout *time.Duration, transport *http.Transport) *http.Client {
 	if transport == nil {
 		transport = &http.Transport{
 			DialContext: (&net.Dialer{
@@ -248,12 +232,18 @@ func getHTTPClient(clientConfig *ClientConfig, requestConfig *RequestConfig, ctx
 	} else {
 		transport = transport.Clone()
 	}
+	var t time.Duration
+	if timeout == nil {
+		t = DefaultTimeout
+	} else {
+		t = *timeout
+	}
 
 	// 尝试配置 HTTP/2
 	_ = http2.ConfigureTransport(transport)
 
 	return &http.Client{
-		Timeout:   timeout,
+		Timeout:   t,
 		Transport: transport,
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -37,20 +38,7 @@ const (
 const DefaultTimeout = 60 * time.Second
 
 // Client 底层 HTTP 客户端
-type Client struct {
-	config ClientConfig
-}
-
-// NewClient 创建新的客户端
-func NewClient(config ClientConfig) *Client {
-	if config.Protocol == "" {
-		config.Protocol = "http"
-	}
-	if config.Timeout == 0 {
-		config.Timeout = DefaultTimeout
-	}
-	return &Client{config: config}
-}
+type Client struct{}
 
 type MultipartFile struct {
 	Filename string
@@ -60,51 +48,44 @@ type MultipartFile struct {
 }
 
 // Invoke 执行请求（核心方法）
-func (c *Client) Invoke(ctx context.Context, req interface{}, opts ...RequestOption) (ResponseBind, error) {
-	// 1. 构建请求配置
-	requestConfig := buildRequestConfig(opts...)
+func (c *Client) Invoke(ctx context.Context, req interface{}, config RequestConfig) (ResponseBind, error) {
 
 	// 2. 构建 HTTP 请求
-	// 如果 req 已经是 *http.Request，直接使用；否则通过 newRequest 构建
+	// 如果 req 已经是 *http.Request，直接使用；否则通过 NewRequest 构建
 	var httpReq *http.Request
 	var err error
 	if httpRequest, ok := req.(*http.Request); ok {
 		httpReq = httpRequest
 	} else {
-		httpReq, err = c.newRequest(ctx, req)
+		httpReq, err = NewRequest(ctx, req, config)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	// 3. 应用请求配置到 HTTP 请求
-	applyRequestConfig(httpReq, requestConfig)
+	return InvokeRequest(ctx, httpReq, config.Timeout, config.Transport)
+}
 
-	// 4. 获取或创建 HTTP Client
-	httpClient := getHTTPClient(&c.config, requestConfig, ctx)
+func InvokeRequest(ctx context.Context, httpReq *http.Request, timeout *time.Duration, transport *http.Transport) (ResponseBind, error) {
+	// 1. 获取或创建 HTTP Client
+	httpClient := getHTTPClient(timeout, transport)
 
-	// 5. 注入 OpenTelemetry 追踪信息
+	// 2. 注入 OpenTelemetry 追踪信息
 	if ctxReq, ok := ctx.Value(RequestContextKey).(*http.Request); ok {
 		otel.GetTextMapPropagator().Inject(ctxReq.Context(), propagation.HeaderCarrier(httpReq.Header))
 	}
 
-	// 6. 执行请求
+	// 3. 执行请求
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
+		logrus.Errorf("http client error: %v", err)
 		return nil, err
 	}
 
 	return &Result{Response: resp}, nil
 }
 
-// buildRequestConfig 构建请求配置
-func buildRequestConfig(opts ...RequestOption) *RequestConfig {
-	config := NewRequestConfig()
-	config.Apply(opts...)
-	return config
-}
-
-func (c *Client) newRequest(ctx context.Context, req interface{}) (*http.Request, error) {
+func NewRequest(ctx context.Context, req interface{}, config RequestConfig) (*http.Request, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -119,10 +100,23 @@ func (c *Client) newRequest(ctx context.Context, req interface{}) (*http.Request
 		path = pathDescriber.Path()
 	}
 
-	request, err := c.newRequestWithContext(ctx, method, c.toUrl(path), req)
+	host := config.Host
+	if config.Port != 0 {
+		host = fmt.Sprintf("%s:%d", config.Host, config.Port)
+	}
+
+	u := url.URL{
+		Scheme: config.Schema,
+		Host:   host,
+		Path:   path,
+	}
+
+	request, err := newRequestWithContext(ctx, method, u.String(), req)
 	if err != nil {
 		return nil, err
 	}
+
+	applyRequestConfig(request, config)
 
 	return request, nil
 }
@@ -131,7 +125,7 @@ func (c *Client) newRequest(ctx context.Context, req interface{}) (*http.Request
 // 这是客户端的核心函数，负责解析结构体字段的in标签，
 // 并将字段值绑定到HTTP请求的不同部分（header、query、body等）
 // 支持多种数据格式：JSON、表单、multipart、URL编码等
-func (c *Client) newRequestWithContext(ctx context.Context, method string, rawUrl string, v interface{}) (*http.Request, error) {
+func newRequestWithContext(ctx context.Context, method string, rawUrl string, v interface{}) (*http.Request, error) {
 	header := http.Header{}
 	// 从上下文获取语言设置，支持国际化
 	lang, ok := ctx.Value(CurrentLangHeader()).(string)
@@ -278,18 +272,6 @@ func (c *Client) newRequestWithContext(ctx context.Context, method string, rawUr
 	}
 
 	return req, nil
-}
-
-func (c *Client) toUrl(path string) string {
-	protocol := c.config.Protocol
-	if protocol == "" {
-		protocol = "http"
-	}
-	url := fmt.Sprintf("%s://%s", protocol, c.config.Host)
-	if c.config.Port > 0 {
-		url = fmt.Sprintf("%s:%d", url, c.config.Port)
-	}
-	return url + path
 }
 
 type Result struct {

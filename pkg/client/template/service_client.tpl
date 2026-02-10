@@ -2,6 +2,7 @@
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/shrewx/ginx"
 )
@@ -15,19 +16,25 @@ type {{ .ClientInterfaceName }} interface {
 
 // {{ .ClientInstanceName }} 客户端实现
 type {{ .ClientInstanceName }} struct {
-	Client          ginx.Client
+	client          ginx.Client
 	ctx             context.Context
-	config *ginx.RequestConfig
+	config          *ginx.RequestConfig
 	syncInvoker     ginx.SyncInvoker
 	asyncInvoker    ginx.AsyncInvoker
 	defaultMode     ginx.InvokeMode
 }
 
 // New{{ .ClientInterfaceName }} 创建新的客户端实例
-func New{{ .ClientInterfaceName }}(c ginx.Client, opts ...ClientOption) *{{ .ClientInstanceName }} {
+func New{{ .ClientInterfaceName }}(schema, host string, port uint16, opts ...ClientOption) *{{ .ClientInstanceName }} {
 	client := &{{ .ClientInstanceName }}{
-		Client:          c,
-		config: ginx.NewRequestConfig(),
+		client: ginx.Client{},
+		config: &ginx.RequestConfig{
+			Schema:  schema,
+			Host:    host,
+			Port:    port,
+			Headers: make(map[string]string),
+			Cookies: make([]*http.Cookie, 0),
+		},
 	}
 
 	// 应用客户端选项
@@ -46,12 +53,12 @@ func (c *{{ $.ClientInstanceName }}) {{ .OperationId }}(ctx context.Context, {{i
 {{end}}
 {{if .HasResp}}
 	resp := new({{ .RespType }})
-	if err := ginx.Invoke(&c.Client, ctx, req, resp, c.config, c.asyncInvoker, opts...); err != nil {
+	if err := ginx.Invoke(ctx, req, resp, c.config, c.getSyncInvoker(), c.asyncInvoker, opts...); err != nil {
 		return nil, err
 	}
 	return resp, nil
 {{else}}
-	return ginx.Invoke(&c.Client, ctx, req, nil, c.config, c.asyncInvoker, opts...)
+	return ginx.Invoke(ctx, req, nil, c.config, c.getSyncInvoker(), c.asyncInvoker, opts...)
 {{end}}
 }
 {{end}}
@@ -61,6 +68,6 @@ func (c *{{ .ClientInstanceName }}) getSyncInvoker() ginx.SyncInvoker {
 	if c.syncInvoker != nil {
 		return c.syncInvoker
 	}
-	client := &c.Client
-	return client
+
+	return &c.client
 }

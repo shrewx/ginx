@@ -169,7 +169,7 @@ func setupHTTPSProxy(port int32, apiServerUrl string) error {
 	ctx := context.Background()
 
 	// 停止并删除现有容器
-	removeContainer(cli, ctx, "ginx-swagger-openapi")
+	removeContainer(cli, ctx, "ginx-swagger-openapi-https")
 	removeContainer(cli, ctx, "ginx-swagger-nginx")
 
 	// 创建或获取网络
@@ -286,7 +286,7 @@ func setupHTTPSProxy(port int32, apiServerUrl string) error {
 		Env:          []string{"SWAGGER_JSON=/swagger/openapi.json"},
 	}, &container.HostConfig{
 		Binds: []string{"/tmp/openapi.json:/swagger/openapi.json"},
-	}, nil, nil, "ginx-swagger-openapi")
+	}, nil, nil, "ginx-swagger-openapi-https")
 	if err != nil {
 		return fmt.Errorf("failed to create swagger container: %w", err)
 	}

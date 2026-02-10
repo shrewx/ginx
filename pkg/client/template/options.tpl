@@ -14,7 +14,7 @@ type ClientOption func(*{{ .ClientInstanceName }})
 func WithDefaultHeaders(headers map[string]string) ClientOption {
 	return func(c *{{ .ClientInstanceName }}) {
 		for k, v := range headers {
-			c.defaultReqConfig.Headers[k] = v
+			c.config.Headers[k] = v
 		}
 	}
 }
@@ -22,14 +22,14 @@ func WithDefaultHeaders(headers map[string]string) ClientOption {
 // WithDefaultCookies 批量设置默认 Cookies
 func WithDefaultCookies(cookies ...*http.Cookie) ClientOption {
 	return func(c *{{ .ClientInstanceName }}) {
-		c.defaultReqConfig.Cookies = append(c.defaultReqConfig.Cookies, cookies...)
+		c.config.Cookies = append(c.config.Cookies, cookies...)
 	}
 }
 
 // WithDefaultTimeout 设置默认超时时间
 func WithDefaultTimeout(timeout time.Duration) ClientOption {
 	return func(c *{{ .ClientInstanceName }}) {
-		c.defaultReqConfig.Timeout = &timeout
+		c.config.Timeout = &timeout
 	}
 }
 
@@ -50,7 +50,7 @@ func WithAsyncInvoker(invoker ginx.AsyncInvoker) ClientOption {
 // WithDefaultInvokeMode 设置默认调用模式
 func WithDefaultInvokeMode(mode ginx.InvokeMode) ClientOption {
 	return func(c *{{ .ClientInstanceName }}) {
-		c.defaultReqConfig.InvokeMode = mode
+		c.config.InvokeMode = &mode
 	}
 }
 
