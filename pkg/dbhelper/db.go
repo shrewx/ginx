@@ -97,7 +97,7 @@ func NewDB(cfg conf.DB) (*DB, error) {
 	sqlDB.SetConnMaxLifetime(connMaxLifetime) // 连接最大生命周期
 	sqlDB.SetConnMaxIdleTime(connMaxIdleTime) // 连接最大空闲时间
 
-	if !cfg.NoMigrate {
+	if cfg.Migrate {
 		err = db.AutoMigrate(maps.Values(tables)...)
 		if err != nil {
 			return nil, err

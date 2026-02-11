@@ -29,7 +29,7 @@ type DB struct {
 	Dsn       string `yaml:"dsn" env:"DB_DSN"`              // 可选，优先级最高：如果非空，直接使用此值
 	ShowLog   bool   `yaml:"showlog" env:"DB_SHOW_LOG"`     // 可选，优先级最高：如果非空，直接使用此值
 
-	NoMigrate bool `yaml:"no_migrate" env:"DB_NO_MIGRATE"` // 可选，默认false：如果为true，不执行数据库迁移
+	Migrate bool `yaml:"migrate" env:"DB_MIGRATE"` // 可选，默认false：如果为true，执行数据库迁移
 
 	// 连接池配置
 	MaxIdleConns    int           `yaml:"max_idle_conns" env:"DB_MAX_IDLE_CONNS"`         // 最大空闲连接数，默认10
