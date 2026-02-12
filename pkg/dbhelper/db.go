@@ -2,8 +2,10 @@ package dbhelper
 
 import (
 	"context"
+	"fmt"
 	"github.com/glebarez/sqlite"
 	"github.com/shrewx/ginx/pkg/conf"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -136,4 +138,97 @@ func GetCtxDB(ctx context.Context, defaultDB *gorm.DB) *gorm.DB {
 	default:
 		return defaultDB
 	}
+}
+
+func DBConditionWithSearchAttrs(db *gorm.DB, searchAttrs map[string]interface{}, eqAttrs map[string]struct{}) *gorm.DB {
+	if eqAttrs == nil {
+		eqAttrs = map[string]struct{}{}
+	}
+	for k, v := range searchAttrs {
+		if strings.Contains(k, "|") {
+			fields := strings.Split(k, "|")
+
+			db = applyOrCondition(db, fields, v, eqAttrs)
+		} else {
+			_, useEq := eqAttrs[k]
+			db = applyCondition(db, k, v, useEq)
+		}
+	}
+	return db
+}
+
+func applyOrCondition(tx *gorm.DB, fields []string, value interface{}, eqAttrs map[string]struct{}) *gorm.DB {
+	var conditions []string
+	var args []interface{}
+
+	for _, f := range fields {
+		if arr, ok := isSlice(value); ok {
+			conditions = append(conditions, fmt.Sprintf("%s IN (?)", strings.TrimSuffix(f, "s")))
+			args = append(args, arr)
+		} else if _, ok := eqAttrs[f]; ok {
+			conditions = append(conditions, fmt.Sprintf("%s = ?", f))
+			args = append(args, value)
+		} else {
+			conditions = append(conditions, fmt.Sprintf("%s LIKE ?", f))
+			args = append(args, "%"+fmt.Sprint(value)+"%")
+		}
+	}
+
+	return tx.Where(fmt.Sprintf("(%s)", strings.Join(conditions, " OR ")), args...)
+}
+
+func applyCondition(tx *gorm.DB, field string, value interface{}, useEq bool) *gorm.DB {
+	// IN 永远优先
+	if arr, ok := isSlice(value); ok {
+		return tx.Where(fmt.Sprintf("%s IN ?", strings.TrimSuffix(field, "s")), arr)
+	}
+
+	if useEq {
+		return tx.Where(fmt.Sprintf("%s = ?", field), value)
+	}
+
+	// 默认 LIKE
+	return tx.Where(fmt.Sprintf("%s LIKE ?", field), "%"+fmt.Sprint(value)+"%")
+}
+
+func isSlice(v interface{}) ([]interface{}, bool) {
+	if v == nil {
+		return nil, false
+	}
+
+	switch s := v.(type) {
+
+	case []interface{}:
+		return s, true
+
+	case []string:
+		out := make([]interface{}, 0, len(s))
+		for _, v := range s {
+			out = append(out, v)
+		}
+		return out, true
+
+	case []int:
+		out := make([]interface{}, 0, len(s))
+		for _, v := range s {
+			out = append(out, v)
+		}
+		return out, true
+
+	case []int64:
+		out := make([]interface{}, 0, len(s))
+		for _, v := range s {
+			out = append(out, v)
+		}
+		return out, true
+
+	case []float64:
+		out := make([]interface{}, 0, len(s))
+		for _, v := range s {
+			out = append(out, v)
+		}
+		return out, true
+	}
+
+	return nil, false
 }
