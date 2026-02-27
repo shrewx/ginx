@@ -304,6 +304,11 @@ func (scanner *DefinitionScanner) GetSchemaByType(ctx context.Context, typ types
 		}
 
 		s := scanner.GetSchemaByType(ctx, elem)
+		// 元类型不支持生成 Schema 时，这里可能返回 nil，需要兜底避免在 markPointer 中解引用空指针
+		if s == nil {
+			logrus.Warnf("schema of pointer element type `%s` is nil, use empty schema instead", elem.String())
+			s = &oas.Schema{}
+		}
 		markPointer(s, count)
 		return s
 	case *types.Map:
@@ -387,7 +392,11 @@ func (scanner *DefinitionScanner) GetSchemaByType(ctx context.Context, typ types
 
 		return structSchema
 	}
-	return nil
+
+	// 走到这里说明当前 Go 类型没有被显式支持（例如 func、chan 等），
+	// 为了避免上层出现空指针，这里统一返回一个空的 Schema，并打印告警日志。
+	logrus.Warnf("unsupported go type `%s` for schema generation, use empty schema instead", typ.String())
+	return &oas.Schema{}
 }
 
 func (scanner *DefinitionScanner) propSchemaByField(
@@ -400,6 +409,13 @@ func (scanner *DefinitionScanner) propSchemaByField(
 	desc string,
 ) *oas.Schema {
 	propSchema := scanner.GetSchemaByType(ctx, fieldType)
+
+	// 有些字段类型（例如 func、chan 等）当前不支持生成 Schema，
+	// 此时 GetSchemaByType 可能返回 nil，这里需要兜底，避免后续访问空指针导致 panic。
+	if propSchema == nil {
+		logrus.Warnf("schema of field `%s` (type `%s`) is nil, use empty schema instead", fieldName, fieldType.String())
+		propSchema = &oas.Schema{}
+	}
 
 	refSchema := (*oas.Schema)(nil)
 
