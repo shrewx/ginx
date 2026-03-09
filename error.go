@@ -35,6 +35,9 @@ type defaultErrorResponse struct {
 	message     string
 }
 
+func (r *defaultErrorResponse) Data() interface{} {
+	return r.body
+}
 func (r *defaultErrorResponse) Error() error         { return r.err }
 func (r *defaultErrorResponse) Status() int          { return r.status }
 func (r *defaultErrorResponse) Body() []byte         { return r.body }

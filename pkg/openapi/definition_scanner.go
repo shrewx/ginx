@@ -174,6 +174,9 @@ func (scanner *DefinitionScanner) Def(ctx context.Context, typeName *types.TypeN
 		for _, ev := range enumValues {
 			if ev.StringValue != nil {
 				s.Enum = append(s.Enum, ev.StringValue)
+				if *ev.StringValue == "" {
+					*ev.StringValue = "unknown"
+				}
 				keyLabel[*ev.StringValue] = ev.Label
 				fmt.Fprintln(description, fmt.Sprintf("* `%s` - %s", *ev.StringValue, ev.Label))
 				s.Type = oas.TypeString

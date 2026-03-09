@@ -2,6 +2,9 @@ package ginx
 
 import (
 	"encoding/json"
+	"github.com/shrewx/ginx/internal/errors"
+	"github.com/shrewx/ginx/pkg/i18nx"
+	"github.com/shrewx/ginx/pkg/logx"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -43,7 +46,7 @@ type ResponseHandler interface {
 	// ctx: gin上下文
 	// result: 操作符返回的结果
 	// 返回: 是否已处理响应（true表示已处理，false表示未处理，继续下一个处理器）
-	Handle(ctx *gin.Context, result interface{}) (bool, SuccessResponse)
+	Handle(ctx *gin.Context, result interface{}) (bool, Response)
 }
 
 var (
@@ -71,7 +74,7 @@ func RegisterResponseHandler(handler ResponseHandler) {
 // 实现原有的响应处理逻辑，保持向后兼容
 type defaultResponseHandler struct{}
 
-func (h *defaultResponseHandler) Handle(ctx *gin.Context, result interface{}) (bool, SuccessResponse) {
+func (h *defaultResponseHandler) Handle(ctx *gin.Context, result interface{}) (bool, Response) {
 	// 如果响应已写入或已中止，不处理
 	if ctx.IsAborted() || ctx.Writer.Written() || ctx.Writer.Status() != http.StatusOK {
 		return false, nil
@@ -94,7 +97,21 @@ func (h *defaultResponseHandler) Handle(ctx *gin.Context, result interface{}) (b
 			headers:     nil,
 		}
 	default: // 默认JSON响应
-		body, _ := json.Marshal(result)
+		body, err := json.Marshal(result)
+		if err != nil {
+			logx.Errorf("marshal response error: %v", err)
+			i18nMsg := errors.InternalServerError.Localize(i18nx.Instance(), "en")
+			body, _ := json.Marshal(i18nMsg)
+			return true, &defaultErrorResponse{
+				err:         err,
+				status:      http.StatusInternalServerError,
+				body:        body,
+				headers:     make(http.Header),
+				contentType: MineApplicationJson,
+				errorCode:   500000000,
+				message:     i18nMsg.Value(),
+			}
+		}
 		return true, &defaultSuccessResponse{
 			data:        result,
 			status:      code,
@@ -110,7 +127,7 @@ func (h *defaultResponseHandler) Handle(ctx *gin.Context, result interface{}) (b
 // 默认处理器作为最后的fallback，确保向后兼容
 func executeResponseHandlers(ctx *gin.Context, result interface{}) {
 	// 先执行用户注册的处理器
-	var resp SuccessResponse
+	var resp Response
 	for _, handler := range registerResponseHandlers {
 		handled, response := handler.Handle(ctx, result)
 		if handled {

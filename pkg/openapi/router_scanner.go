@@ -134,13 +134,22 @@ func (scanner *RouterScanner) processRegisterCall(pkg *packages.Package, node as
 	switch node.(type) {
 	case *ast.CallExpr:
 		callExpr := node.(*ast.CallExpr)
-		if callExpr.Fun == selectExpr {
+		if callExpr.Fun == selectExpr && len(callExpr.Args) > 0 {
 			routerIdent := callExpr.Args[0]
 			switch v := routerIdent.(type) {
 			case *ast.SelectorExpr:
-				argTypeVar := pkg.TypesInfo.ObjectOf(v.Sel).(*types.Var)
-				if r, ok := scanner.routers[argTypeVar]; ok {
-					router.Register(r)
+				// 跨包 router: RootRouter.Register(user.Router)
+				if argTypeVar, ok := pkg.TypesInfo.ObjectOf(v.Sel).(*types.Var); ok {
+					if r, ok := scanner.routers[argTypeVar]; ok {
+						router.Register(r)
+					}
+				}
+			case *ast.Ident:
+				// 同包 router: RootRouter.Register(v1Router)
+				if argTypeVar, ok := pkg.TypesInfo.ObjectOf(v).(*types.Var); ok {
+					if r, ok := scanner.routers[argTypeVar]; ok {
+						router.Register(r)
+					}
 				}
 			}
 		}
