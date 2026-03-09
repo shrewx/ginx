@@ -770,6 +770,8 @@ func (operator *Operator) BindOperation(method string, operation *oas.Operation,
 		operation.SetRequestBody(operator.RequestBody)
 	}
 
+	sortParameters(operation.Parameters)
+
 	for _, statusError := range operator.StatusErrors {
 		statusErrorList := make([]string, 0)
 
@@ -840,13 +842,37 @@ func (operator *Operator) BindOperation(method string, operation *oas.Operation,
 		}
 	}
 
-	// sort all parameters by postion and name
-	//if len(operation.Parameters) > 0 {
-	//	sort.Slice(operation.Parameters, func(i, j int) bool {
-	//		return positionOrders[operation.Parameters[i].In]+operation.Parameters[i].Name <
-	//			positionOrders[operation.Parameters[j].In]+operation.Parameters[j].Name
-	//	})
-	//}
+}
+
+var parameterPositionOrders = map[oas.Position]int{
+	oas.PositionPath:   0,
+	oas.PositionQuery:  1,
+	oas.PositionHeader: 2,
+	oas.PositionCookie: 3,
+}
+
+func sortParameters(parameters []*oas.Parameter) {
+	if len(parameters) <= 1 {
+		return
+	}
+
+	sort.Slice(parameters, func(i, j int) bool {
+		left := parameters[i]
+		right := parameters[j]
+
+		leftOrder := parameterPositionOrders[left.In]
+		rightOrder := parameterPositionOrders[right.In]
+
+		if leftOrder != rightOrder {
+			return leftOrder < rightOrder
+		}
+
+		if left.Name != right.Name {
+			return left.Name < right.Name
+		}
+
+		return left.In < right.In
+	})
 }
 
 func valueOf(v constant.Value) interface{} {
